@@ -1,4 +1,8 @@
 python-dotenv
 requests
 pytest
+mcp
+anthropic
+fastapi
+uvicorn[standard]
 
