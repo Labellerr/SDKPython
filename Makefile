@@ -34,7 +34,7 @@ format:
 build: ## Build package
 	$(PYTHON) -m build
 
-version: 
+version:
 	@grep '^version = ' pyproject.toml | cut -d'"' -f2 | sed 's/^/Current version: /' || echo "Version not found"
 
 info:
@@ -55,3 +55,10 @@ check-release: ## Check if everything is ready for release
 	@echo "2. Update version in pyproject.toml"
 	@echo "3. Commit: git commit -m '[LABIMP-XXXX] Prepare release vX.X.X'"
 	@echo "4. Push and create PR to main (patch) or develop (minor)"
+
+integration-test:
+	$(PYTHON) -m pytest  -v labellerr_integration_case_tests.py
+
+pre-commit-install:
+	pip install pre-commit
+	pre-commit install

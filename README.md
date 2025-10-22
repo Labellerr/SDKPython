@@ -21,7 +21,8 @@
 8. [Retrieving All Datasets](#retrieving-all-datasets)
    - [Example Usage](#example-usage-3)
 9. [Error Handling](#error-handling)
-10. [Support](#support)
+10. [Automatic Logging and Error Handling](#automatic-logging-and-error-handling)
+11. [Support](#support)
 
 ---
 
@@ -145,7 +146,7 @@ try:
     result = client.initiate_create_project(project_payload)
     print(f"Project created successfully. Project ID: {result['project_id']}")
 except LabellerrError as e:
-    print(f"Project creation failed: {str(e)}")
+    print(f"Project creation failed: {e}")
 ```
 
 ---
@@ -172,7 +173,7 @@ annotation_file = '/path/to/annotations.json'
 try:
     # Upload and wait for processing to complete
     result = client.upload_preannotation_by_project_id(project_id, client_id, annotation_format, annotation_file)
-  
+
     # Check the final status
     if result['response']['status'] == 'completed':
         print("Pre-annotations processed successfully")
@@ -180,7 +181,7 @@ try:
         metadata = result['response'].get('metadata', {})
         print("metadata",metadata)
 except LabellerrError as e:
-    print(f"Pre-annotation upload failed: {str(e)}")
+    print(f"Pre-annotation upload failed: {e}")
 ```
 
 #### Example Usage (Asynchronous):
@@ -202,9 +203,9 @@ annotation_file = '/path/to/annotations.json'
 try:
     # Start the async upload - returns immediately
     future = client.upload_preannotation_by_project_id_async(project_id, client_id, annotation_format, annotation_file)
-  
+
     print("Upload started, you can do other work here...")
-  
+
     # When you need the result, wait for completion
     try:
         result = future.result(timeout=300)  # 5 minutes timeout
@@ -215,9 +216,9 @@ try:
     except TimeoutError:
         print("Processing took too long")
     except Exception as e:
-        print(f"Error in processing: {str(e)}")
+        print(f"Error in processing: {e}")
 except LabellerrError as e:
-    print(f"Failed to start upload: {str(e)}")
+    print(f"Failed to start upload: {e}")
 ```
 
 #### Choosing Between Sync and Async
@@ -283,7 +284,7 @@ try:
     result = client.create_local_export(project_id, client_id, export_config)
     print(f"Local export created successfully. Export ID: {result['export_id']}")
 except LabellerrError as e:
-    print(f"Local export creation failed: {str(e)}")
+    print(f"Local export creation failed: {e}")
 ```
 
 **Note**: The export process creates a local copy of your project's annotations based on the specified status filters. This is useful for backup purposes or when you need to process the annotations offline.
@@ -310,7 +311,7 @@ client_id = '12345'
 
 try:
     result = client.get_all_project_per_client_id(client_id)
-  
+
     # Check if projects were retrieved successfully
     if result and 'response' in result:
         projects = result['response']
@@ -320,7 +321,7 @@ try:
             print(f"  Name: {project.get('project_name')}")
             print(f"  Type: {project.get('data_type')}")
 except LabellerrError as e:
-    print(f"Failed to retrieve projects: {str(e)}")
+    print(f"Failed to retrieve projects: {e}")
 ```
 
 This method is useful when you need to:
@@ -346,7 +347,6 @@ You can retrieve both linked and unlinked datasets associated with a client usin
 from labellerr.client import LabellerrClient
 from labellerr.exceptions import LabellerrError
 
-
 # Initialize the client with your API credentials
 client = LabellerrClient('your_api_key', 'your_api_secret')
 
@@ -354,8 +354,8 @@ client_id = '12345'
 data_type = 'image'
 
 try:
-    result = client.get_all_dataset(client_id, data_type)
-  
+    result = client.get_all_datasets(client_id, data_type)
+
     # Process linked datasets
     linked_datasets = result['linked']
     print(f"Found {len(linked_datasets)} linked datasets:")
@@ -373,7 +373,7 @@ try:
         print(f"  Description: {dataset.get('dataset_description')}")
 
 except LabellerrError as e:
-    print(f"Failed to retrieve datasets: {str(e)}")
+    print(f"Failed to retrieve datasets: {e}")
 ```
 
 This method is useful when you need to:
@@ -402,10 +402,100 @@ The Labellerr SDK uses a custom exception class, `LabellerrError`, to indicate i
 from labellerr.exceptions import LabellerrError
 
 try:
-    # Example function call
     result = client.initiate_create_project(payload)
 except LabellerrError as e:
-    print(f"An error occurred: {str(e)}")
+    print(f"An error occurred: {e}")
+```
+
+---
+
+## Automatic Logging and Error Handling
+
+The Labellerr SDK uses **class-level decorators** to automatically apply logging and error handling to all public methods in both `LabellerrClient` and `AsyncLabellerrClient`. This means every method call is automatically:
+
+1. **Logged** when the method is called
+2. **Logged** when the method completes successfully
+3. **Logged** with error details if the method fails
+4. **Wrapped** with standardized error handling
+
+### Benefits
+
+✓ **No Boilerplate**: You don't need to add logging or error handling code in every method
+✓ **Consistency**: All methods follow the same logging pattern
+✓ **Maintainability**: Changes to logging or error handling are centralized
+✓ **Debugging**: Comprehensive logs help troubleshoot issues quickly
+
+### How It Works
+
+The SDK uses two decorators:
+- `@auto_log_and_handle_errors` for synchronous methods
+- `@auto_log_and_handle_errors_async` for asynchronous methods
+
+These decorators are applied at the class level, so all public methods (methods not starting with `_`) automatically inherit them.
+
+### Example Log Output
+
+When you call a method, you'll see debug logs like:
+
+```
+DEBUG - Calling create_gcs_connection
+DEBUG - create_gcs_connection completed successfully
+```
+
+Or if an error occurs:
+
+```
+DEBUG - Calling create_gcs_connection
+ERROR - create_gcs_connection failed: Connection refused
+```
+
+### Enabling Debug Logging
+
+To see the automatic logging in action, configure Python's logging:
+
+```python
+import logging
+
+# Enable debug logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+from labellerr.client import LabellerrClient
+
+client = LabellerrClient('your_api_key', 'your_api_secret')
+
+# Now all method calls will be automatically logged
+client.create_dataset(dataset_config, files_to_upload=['file1.jpg'])
+```
+
+### Excluded Methods
+
+Some methods are excluded from automatic decoration:
+- Private methods (starting with `_`)
+- Utility methods like `close()`, `validate_rotation_config()`
+- Session management methods
+
+### Custom Implementation
+
+If you're building your own client or extending the SDK, you can use the same decorators:
+
+```python
+from labellerr.validators import auto_log_and_handle_errors
+
+@auto_log_and_handle_errors(
+    include_params=False,  # Don't log sensitive parameters
+    exclude_methods=['close', 'cleanup']  # Skip these methods
+)
+class MyCustomClient:
+    def my_method(self):
+        # This method automatically gets logging and error handling
+        pass
+
+    def close(self):
+        # This method is excluded from decoration
+        pass
 ```
 
 ---

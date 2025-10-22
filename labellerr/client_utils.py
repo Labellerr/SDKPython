@@ -3,8 +3,12 @@ Shared utilities for both sync and async Labellerr clients.
 """
 
 import uuid
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
+
+import requests
+
 from . import constants
+from .exceptions import LabellerrError
 
 
 def build_headers(
@@ -54,19 +58,27 @@ def validate_rotation_config(rotation_config: Dict[str, Any]) -> None:
     client_review_rotation_count = rotation_config.get("client_review_rotation_count")
 
     # Validate review_rotation_count
-    if review_rotation_count != 1:
+    if int(review_rotation_count or 0) != 1:
         raise LabellerrError("review_rotation_count must be 1")
 
     # Validate client_review_rotation_count based on annotation_rotation_count
-    if annotation_rotation_count == 0 and client_review_rotation_count != 0:
+    if (
+        int(annotation_rotation_count or 0) == 0
+        and int(client_review_rotation_count or 0) != 0
+    ):
         raise LabellerrError(
             "client_review_rotation_count must be 0 when annotation_rotation_count is 0"
         )
-    elif annotation_rotation_count == 1 and client_review_rotation_count not in [0, 1]:
+    elif int(annotation_rotation_count or 0) == 1 and int(
+        client_review_rotation_count or 0
+    ) not in [0, 1]:
         raise LabellerrError(
             "client_review_rotation_count can only be 0 or 1 when annotation_rotation_count is 1"
         )
-    elif annotation_rotation_count > 1 and client_review_rotation_count != 0:
+    elif (
+        int(annotation_rotation_count or 0) > 1
+        and int(client_review_rotation_count or 0) != 0
+    ):
         raise LabellerrError(
             "client_review_rotation_count must be 0 when annotation_rotation_count is greater than 1"
         )
@@ -96,6 +108,7 @@ def validate_file_exists(file_path: str) -> str:
     :raises LabellerrError: If file doesn't exist
     """
     import os
+
     from .exceptions import LabellerrError
 
     if os.path.exists(file_path):
@@ -113,6 +126,7 @@ def validate_annotation_format(annotation_format: str, annotation_file: str) -> 
     :raises LabellerrError: If format/extension mismatch
     """
     import os
+
     from .exceptions import LabellerrError
 
     if annotation_format not in constants.ANNOTATION_FORMAT:
@@ -168,3 +182,87 @@ def validate_export_config(export_config: Dict[str, Any]) -> None:
 def generate_request_id() -> str:
     """Generate a unique request ID."""
     return str(uuid.uuid4())
+
+
+def handle_response(response, request_id=None, success_codes=None):
+    """
+    Legacy method for handling response objects directly.
+    Kept for backward compatibility with special response handlers.
+
+    :param response: requests.Response object
+    :param request_id: Optional request tracking ID
+    :param success_codes: Optional list of success status codes (default: [200, 201])
+    :return: JSON response data for successful requests
+    :raises LabellerrError: For non-successful responses
+    """
+    if success_codes is None:
+        success_codes = [200, 201]
+
+    if response.status_code in success_codes:
+        try:
+            return response.json()
+        except ValueError:
+            # Handle cases where response is successful but not JSON
+            raise LabellerrError(f"Expected JSON response but got: {response.text}")
+    elif 400 <= response.status_code < 500:
+        try:
+            error_data = response.json()
+            raise LabellerrError({"error": error_data, "code": response.status_code})
+        except ValueError:
+            raise LabellerrError({"error": response.text, "code": response.status_code})
+    else:
+        raise LabellerrError(
+            {
+                "status": "internal server error",
+                "message": "Please contact support with the request tracking id",
+                "request_id": request_id or str(uuid.uuid4()),
+            }
+        )
+
+
+def request(method, url, request_id=None, success_codes=None, **kwargs):
+    """
+    Make HTTP request and handle response in a single method.
+
+    :param method: HTTP method (GET, POST, etc.)
+    :param url: Request URL
+    :param request_id: Optional request tracking ID (auto-generated if not provided)
+    :param success_codes: Optional list of success status codes (default: [200, 201])
+    :param kwargs: Additional arguments to pass to requests
+    :return: JSON response data for successful requests
+    :raises LabellerrError: For non-successful responses
+    """
+    # Generate request_id if not provided
+    if request_id is None:
+        request_id = str(uuid.uuid4())
+
+    # Set default timeout if not provided
+    kwargs.setdefault("timeout", (30, 300))  # connect, read
+
+    # Make the request[
+    response = requests.request(method, url, **kwargs)
+
+    # Handle the response
+    if success_codes is None:
+        success_codes = [200, 201]
+
+    if response.status_code in success_codes:
+        try:
+            return response.json()
+        except ValueError:
+            # Handle cases where response is successful but not JSON
+            raise LabellerrError(f"Expected JSON response but got: {response.text}")
+    elif 400 <= response.status_code < 500:
+        try:
+            error_data = response.json()
+            raise LabellerrError({"error": error_data, "code": response.status_code})
+        except ValueError:
+            raise LabellerrError({"error": response.text, "code": response.status_code})
+    else:
+        raise LabellerrError(
+            {
+                "status": "internal server error",
+                "message": "Please contact support with the request tracking id",
+                "request_id": request_id,
+            }
+        )

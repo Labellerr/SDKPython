@@ -1,5 +1,6 @@
 import logging
 import time
+from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, Union
 
 T = TypeVar("T")
@@ -96,3 +97,44 @@ def poll(
 
         # Wait before next attempt
         time.sleep(interval)
+
+
+def validate_params(**validations):
+    """
+    Decorator to validate method parameters based on type specifications.
+
+    Usage:
+    @validate_params(project_id=str, file_id=str, keyFrames=list)
+    def some_method(self, project_id, file_id, keyFrames):
+        ...
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Get function signature to map args to parameter names
+            import inspect
+
+            sig = inspect.signature(func)
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            # Validate each parameter
+            for param_name, expected_type in validations.items():
+                if param_name in bound.arguments:
+                    value = bound.arguments[param_name]
+                    if not isinstance(value, expected_type):
+                        from .exceptions import LabellerrError
+
+                        type_name = (
+                            " or ".join(t.__name__ for t in expected_type)
+                            if isinstance(expected_type, tuple)
+                            else expected_type.__name__
+                        )
+                        raise LabellerrError(f"{param_name} must be a {type_name}")
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

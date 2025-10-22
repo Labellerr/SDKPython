@@ -88,8 +88,12 @@ jobs:
           LABELLERR_API_SECRET: ${{ secrets.LABELLERR_API_SECRET }}
           LABELLERR_CLIENT_ID: ${{ secrets.LABELLERR_CLIENT_ID }}
           LABELLERR_TEST_EMAIL: ${{ secrets.LABELLERR_TEST_EMAIL }}
+          AWS_CONNECTION_IMAGE: ${{ secrets.AWS_CONNECTION_IMAGE }}
+          AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
+          GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
+          GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
         run: |
-          python -m pytest labellerr_use_case_tests.py -v
+          python -m pytest labellerr_integration_case_tests.py -v
 
   release:
     name: Create Release

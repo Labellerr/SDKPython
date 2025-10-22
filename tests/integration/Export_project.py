@@ -1,14 +1,16 @@
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'SDKPython')))
+import sys
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SDKPython"))
+)
 
 # Add the root directory to Python path
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(root_dir)
 
 from SDKPython.labellerr.client import LabellerrClient
 from SDKPython.labellerr.exceptions import LabellerrError
-import uuid
 
 
 def export_project(api_key, api_secret, client_id, project_id):
@@ -19,12 +21,18 @@ def export_project(api_key, api_secret, client_id, project_id):
         "export_name": "Weekly Export",
         "export_description": "Export of all accepted annotations",
         "export_format": "coco_json",
-        "statuses": ['review', 'r_assigned','client_review', 'cr_assigned','accepted']
+        "statuses": [
+            "review",
+            "r_assigned",
+            "client_review",
+            "cr_assigned",
+            "accepted",
+        ],
     }
     try:
         result = client.create_local_export(project_id, client_id, export_config)
 
-        export_id = result["response"]['report_id']
+        export_id = result["response"]["report_id"]
         print(f"Local export created successfully. Export ID: {export_id}")
     except LabellerrError as e:
         print(f"Local export creation failed: {str(e)}")

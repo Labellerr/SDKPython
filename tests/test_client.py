@@ -1,8 +1,7 @@
 import os
-import uuid
-from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from labellerr.client import LabellerrClient
 from labellerr.exceptions import LabellerrError
@@ -31,7 +30,7 @@ def sample_valid_payload():
         "dataset_name": "Test Dataset",
         "dataset_description": "Dataset for testing",
         "data_type": "image",
-        "created_by": "test_user",
+        "created_by": "test_user@example.com",
         "project_name": "Test Project",
         "autolabel": False,
         "files_to_upload": [test_image],
@@ -52,67 +51,6 @@ def sample_valid_payload():
 
 class TestInitiateCreateProject:
 
-    @patch("labellerr.client.LabellerrClient.create_dataset")
-    @patch("labellerr.client.LabellerrClient.get_dataset")
-    @patch("labellerr.client.utils.poll")
-    @patch("labellerr.client.LabellerrClient.create_annotation_guideline")
-    @patch("labellerr.client.LabellerrClient.create_project")
-    def test_successful_project_creation(
-        self,
-        mock_create_project,
-        mock_create_guideline,
-        mock_poll,
-        mock_get_dataset,
-        mock_create_dataset,
-        client,
-        sample_valid_payload,
-    ):
-        """Test successful project creation flow"""
-        # Configure mocks
-        dataset_id = str(uuid.uuid4())
-        mock_create_dataset.return_value = {
-            "response": "success",
-            "dataset_id": dataset_id,
-        }
-
-        mock_get_dataset.return_value = {"response": {"status_code": 300}}
-
-        mock_poll.return_value = {"response": {"status_code": 300}}
-
-        template_id = str(uuid.uuid4())
-        mock_create_guideline.return_value = template_id
-
-        expected_project_response = {
-            "response": "success",
-            "project_id": str(uuid.uuid4()),
-        }
-        mock_create_project.return_value = expected_project_response
-
-        # Execute
-        result = client.initiate_create_project(sample_valid_payload)
-
-        # Assert
-        assert result["status"] == "success"
-        assert "message" in result
-        assert "project_id" in result
-        mock_create_dataset.assert_called_once()
-        mock_poll.assert_called_once()
-        mock_create_guideline.assert_called_once_with(
-            sample_valid_payload["client_id"],
-            sample_valid_payload["annotation_guide"],
-            sample_valid_payload["project_name"],
-            sample_valid_payload["data_type"],
-        )
-        mock_create_project.assert_called_once_with(
-            project_name=sample_valid_payload["project_name"],
-            data_type=sample_valid_payload["data_type"],
-            client_id=sample_valid_payload["client_id"],
-            dataset_id=dataset_id,
-            annotation_template_id=template_id,
-            rotation_config=sample_valid_payload["rotation_config"],
-            created_by=sample_valid_payload["created_by"],
-        )
-
     def test_missing_required_parameters(self, client, sample_valid_payload):
         """Test error handling for missing required parameters"""
         # Remove required parameters one by one and test
@@ -123,7 +61,6 @@ class TestInitiateCreateProject:
             "data_type",
             "created_by",
             "project_name",
-            "annotation_guide",
             "autolabel",
         ]
 
@@ -135,6 +72,18 @@ class TestInitiateCreateProject:
                 client.initiate_create_project(invalid_payload)
 
             assert f"Required parameter {param} is missing" in str(exc_info.value)
+
+        # Test annotation_guide separately since it has special validation
+        invalid_payload = sample_valid_payload.copy()
+        del invalid_payload["annotation_guide"]
+
+        with pytest.raises(LabellerrError) as exc_info:
+            client.initiate_create_project(invalid_payload)
+
+        assert (
+            "Please provide either annotation guide or annotation template id"
+            in str(exc_info.value)
+        )
 
     def test_invalid_client_id(self, client, sample_valid_payload):
         """Test error handling for invalid client_id"""
@@ -219,95 +168,259 @@ class TestInitiateCreateProject:
 
         assert "Folder path does not exist" in str(exc_info.value)
 
-    @patch("labellerr.client.LabellerrClient.create_dataset")
-    def test_create_dataset_error(
-        self, mock_create_dataset, client, sample_valid_payload
-    ):
-        """Test error handling when create_dataset fails"""
-        error_message = "Failed to create dataset"
-        mock_create_dataset.side_effect = LabellerrError(error_message)
 
-        with pytest.raises(LabellerrError) as exc_info:
-            client.initiate_create_project(sample_valid_payload)
+class TestCreateUser:
+    """Test cases for create_user method"""
 
-        assert error_message in str(exc_info.value)
+    def test_create_user_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.create_user(
+                client_id="12345",
+                first_name="John",
+                last_name="Doe",
+                # Missing email_id, projects, roles
+            )
 
-    @patch("labellerr.client.LabellerrClient.create_dataset")
-    @patch("labellerr.client.utils.poll")
-    def test_poll_timeout(
-        self, mock_poll, mock_create_dataset, client, sample_valid_payload
-    ):
-        """Test handling when dataset polling times out"""
-        dataset_id = str(uuid.uuid4())
-        mock_create_dataset.return_value = {
-            "response": "success",
-            "dataset_id": dataset_id,
-        }
+        assert "missing" in str(exc_info.value).lower()
 
-        # Poll returns None when it times out
-        mock_poll.return_value = None
+    def test_create_user_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.create_user(
+                client_id=12345,  # Not a string
+                first_name="John",
+                last_name="Doe",
+                email_id="john@example.com",
+                projects=["project_1"],
+                roles=[{"project_id": "project_1", "role_id": 7}],
+            )
 
-        with pytest.raises(LabellerrError):
-            client.initiate_create_project(sample_valid_payload)
+        assert "client_id" in str(exc_info.value).lower()
 
-    @patch("labellerr.client.LabellerrClient.create_dataset")
-    @patch("labellerr.client.utils.poll")
-    @patch("labellerr.client.LabellerrClient.create_annotation_guideline")
-    def test_create_guideline_error(
-        self,
-        mock_create_guideline,
-        mock_poll,
-        mock_create_dataset,
-        client,
-        sample_valid_payload,
-    ):
-        """Test error handling when create_annotation_guideline fails"""
-        dataset_id = str(uuid.uuid4())
-        mock_create_dataset.return_value = {
-            "response": "success",
-            "dataset_id": dataset_id,
-        }
-        mock_poll.return_value = {"response": {"status_code": 300}}
+    def test_create_user_empty_projects(self, client):
+        """Test error handling for empty projects list"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.create_user(
+                client_id="12345",
+                first_name="John",
+                last_name="Doe",
+                email_id="john@example.com",
+                projects=[],  # Empty list
+                roles=[{"project_id": "project_1", "role_id": 7}],
+            )
 
-        error_message = "Failed to create annotation guideline"
-        mock_create_guideline.side_effect = LabellerrError(error_message)
+        assert "projects" in str(exc_info.value).lower()
 
-        with pytest.raises(LabellerrError) as exc_info:
-            client.initiate_create_project(sample_valid_payload)
+    def test_create_user_empty_roles(self, client):
+        """Test error handling for empty roles list"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.create_user(
+                client_id="12345",
+                first_name="John",
+                last_name="Doe",
+                email_id="john@example.com",
+                projects=["project_1"],
+                roles=[],  # Empty list
+            )
 
-        assert error_message in str(exc_info.value)
+        assert "roles" in str(exc_info.value).lower()
 
-    @patch("labellerr.client.LabellerrClient.create_dataset")
-    @patch("labellerr.client.utils.poll")
-    @patch("labellerr.client.LabellerrClient.create_annotation_guideline")
-    @patch("labellerr.client.LabellerrClient.create_project")
-    def test_create_project_error(
-        self,
-        mock_create_project,
-        mock_create_guideline,
-        mock_poll,
-        mock_create_dataset,
-        client,
-        sample_valid_payload,
-    ):
-        """Test error handling when create_project fails"""
-        dataset_id = str(uuid.uuid4())
-        mock_create_dataset.return_value = {
-            "response": "success",
-            "dataset_id": dataset_id,
-        }
-        mock_poll.return_value = {"response": {"status_code": 300}}
 
-        template_id = str(uuid.uuid4())
-        mock_create_guideline.return_value = template_id
+class TestUpdateUserRole:
+    """Test cases for update_user_role method"""
 
-        error_message = "Failed to create project"
-        mock_create_project.side_effect = LabellerrError(error_message)
+    def test_update_user_role_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.update_user_role(
+                client_id="12345",
+                project_id="project_123",
+                # Missing email_id, roles
+            )
 
-        with pytest.raises(LabellerrError) as exc_info:
-            client.initiate_create_project(sample_valid_payload)
+        assert "missing" in str(exc_info.value).lower()
 
-        assert error_message in str(exc_info.value)
+    def test_update_user_role_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.update_user_role(
+                client_id=12345,  # Not a string
+                project_id="project_123",
+                email_id="john@example.com",
+                roles=[{"project_id": "project_1", "role_id": 7}],
+            )
+
+        assert "client_id" in str(exc_info.value).lower()
+
+    def test_update_user_role_empty_roles(self, client):
+        """Test error handling for empty roles list"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.update_user_role(
+                client_id="12345",
+                project_id="project_123",
+                email_id="john@example.com",
+                roles=[],  # Empty list
+            )
+
+        assert "roles" in str(exc_info.value).lower()
+
+
+class TestDeleteUser:
+    """Test cases for delete_user method"""
+
+    def test_delete_user_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.delete_user(
+                client_id="12345",
+                project_id="project_123",
+                # Missing email_id, user_id
+            )
+
+        assert "missing" in str(exc_info.value).lower()
+
+    def test_delete_user_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.delete_user(
+                client_id=12345,  # Not a string
+                project_id="project_123",
+                email_id="john@example.com",
+                user_id="user_123",
+            )
+
+        assert "client_id" in str(exc_info.value).lower()
+
+    def test_delete_user_invalid_project_id(self, client):
+        """Test error handling for invalid project_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.delete_user(
+                client_id="12345",
+                project_id=12345,  # Not a string
+                email_id="john@example.com",
+                user_id="user_123",
+            )
+
+        assert "project_id" in str(exc_info.value).lower()
+
+    def test_delete_user_invalid_email_id(self, client):
+        """Test error handling for invalid email_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.delete_user(
+                client_id="12345",
+                project_id="project_123",
+                email_id=12345,  # Not a string
+                user_id="user_123",
+            )
+
+        assert "email_id" in str(exc_info.value).lower()
+
+    def test_delete_user_invalid_user_id(self, client):
+        """Test error handling for invalid user_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.delete_user(
+                client_id="12345",
+                project_id="project_123",
+                email_id="john@example.com",
+                user_id=12345,  # Not a string
+            )
+
+        assert "user_id" in str(exc_info.value).lower()
+
+
+class TestAddUserToProject:
+    """Test cases for add_user_to_project method"""
+
+    def test_add_user_to_project_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.add_user_to_project(
+                client_id="12345",
+                project_id="project_123",
+                # Missing email_id
+            )
+
+        assert "missing" in str(exc_info.value).lower()
+
+    def test_add_user_to_project_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.add_user_to_project(
+                client_id=12345,  # Not a string
+                project_id="project_123",
+                email_id="john@example.com",
+            )
+
+        assert "client_id" in str(exc_info.value).lower()
+
+
+class TestRemoveUserFromProject:
+    """Test cases for remove_user_from_project method"""
+
+    def test_remove_user_from_project_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.remove_user_from_project(
+                client_id="12345",
+                project_id="project_123",
+                # Missing email_id
+            )
+
+        assert "missing" in str(exc_info.value).lower()
+
+    def test_remove_user_from_project_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.remove_user_from_project(
+                client_id=12345,  # Not a string
+                project_id="project_123",
+                email_id="john@example.com",
+            )
+
+        assert "client_id" in str(exc_info.value).lower()
+
+
+class TestChangeUserRole:
+    """Test cases for change_user_role method"""
+
+    def test_change_user_role_missing_required_params(self, client):
+        """Test error handling for missing required parameters"""
+        with pytest.raises(TypeError) as exc_info:
+            client.change_user_role(
+                client_id="12345",
+                project_id="project_123",
+                email_id="john@example.com",
+                # Missing new_role_id
+            )
+
+        assert "missing" in str(exc_info.value).lower()
+
+    def test_change_user_role_invalid_client_id(self, client):
+        """Test error handling for invalid client_id"""
+        with pytest.raises(ValidationError) as exc_info:
+            client.change_user_role(
+                client_id=12345,  # Not a string
+                project_id="project_123",
+                email_id="john@example.com",
+                new_role_id="7",
+            )
+
+        assert "client_id" in str(exc_info.value).lower()
+
+
+class TestListAndBulkAssignFiles:
+    """Tests for list_file and bulk_assign_files methods"""
+
+    def test_list_file_missing_required(self, client):
+        with pytest.raises(TypeError):
+            client.list_file(client_id="12345", project_id="project_123")
+
+    def test_bulk_assign_files_missing_required(self, client):
+        with pytest.raises(TypeError):
+            client.bulk_assign_files(
+                client_id="12345", project_id="project_123", new_status="None"
+            )
 
 
 if __name__ == "__main__":

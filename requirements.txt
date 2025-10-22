@@ -1,8 +1,9 @@
+urllib3
 python-dotenv
 requests
 pytest
+pydantic>=2.0.0
 mcp
 anthropic
 fastapi
 uvicorn[standard]
-

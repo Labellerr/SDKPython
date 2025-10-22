@@ -1,0 +1,3 @@
+scenedetect 
+google-cloud-videointelligence
+scikit-image

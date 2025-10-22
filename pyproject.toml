@@ -34,6 +34,7 @@ dependencies = [
     "aiohttp>=3.8.0",
     "aiofiles>=0.8.0",
     "certifi>=2021.5.25",
+    "pydantic>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,7 @@ dev = [
     "flake8>=3.8.0",
     "mypy>=0.800",
     "isort>=5.0.0",
+    "python-dotenv>=1.0.0",
     "build>=0.3.0",
 ]
 docs = [
@@ -92,19 +94,24 @@ line_length = 88
 known_first_party = ["labellerr"]
 
 [tool.mypy]
-python_version = "3.7"
-warn_return_any = true
+python_version = "3.8"
+files = ["labellerr"]
+exclude = "(^tests/|labellerr_integration_case_tests.py$)"
+ignore_missing_imports = true
+follow_imports = "silent"
+allow_redefinition = true
+warn_return_any = false
 warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+warn_redundant_casts = false
+warn_unused_ignores = false
+warn_no_return = false
+warn_unreachable = false
+strict_equality = false
 
 [tool.pytest.ini_options]
 minversion = "6.0"

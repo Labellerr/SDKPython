@@ -4,15 +4,20 @@ import asyncio
 import logging
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import aiofiles
 import aiohttp
 
-from . import constants, client_utils
+from . import client_utils, constants
 from .exceptions import LabellerrError
+from .validators import auto_log_and_handle_errors_async
 
 
+@auto_log_and_handle_errors_async(
+    include_params=False,
+    exclude_methods=["close", "_ensure_session", "_build_headers"],
+)
 class AsyncLabellerrClient:
     """
     Async client for interacting with the Labellerr API using aiohttp for better performance.
@@ -82,11 +87,68 @@ class AsyncLabellerrClient:
             extra_headers=extra_headers,
         )
 
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        request_id: Optional[str] = None,
+        success_codes: Optional[list] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Make HTTP request and handle response in a single async method.
+
+        :param method: HTTP method (GET, POST, etc.)
+        :param url: Request URL
+        :param request_id: Optional request tracking ID (auto-generated if not provided)
+        :param success_codes: Optional list of success status codes (default: [200, 201])
+        :param kwargs: Additional arguments to pass to aiohttp
+        :return: JSON response data for successful requests
+        :raises LabellerrError: For non-successful responses
+        """
+        # Generate request_id if not provided
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+
+        await self._ensure_session()
+
+        if success_codes is None:
+            success_codes = [200, 201]
+
+        assert (
+            self._session is not None
+        ), "Session must be initialized before making requests"
+        async with self._session.request(method, url, **kwargs) as response:
+            if response.status in success_codes:
+                try:
+                    return await response.json()
+                except Exception:
+                    text = await response.text()
+                    raise LabellerrError(f"Expected JSON response but got: {text}")
+            elif 400 <= response.status < 500:
+                try:
+                    error_data = await response.json()
+                    raise LabellerrError({"error": error_data, "code": response.status})
+                except Exception:
+                    text = await response.text()
+                    raise LabellerrError({"error": text, "code": response.status})
+            else:
+                text = await response.text()
+                raise LabellerrError(
+                    {
+                        "status": "internal server error",
+                        "message": "Please contact support with the request tracking id",
+                        "request_id": request_id,
+                        "error": text,
+                    }
+                )
+
     async def _handle_response(
         self, response: aiohttp.ClientResponse, request_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Async standardized response handling.
+        Legacy method for handling response objects directly.
+        Kept for backward compatibility with special response handlers.
 
         :param response: aiohttp ClientResponse object
         :param request_id: Optional request tracking ID
@@ -123,18 +185,15 @@ class AsyncLabellerrClient:
         """
         Async version of get_direct_upload_url.
         """
-        await self._ensure_session()
-
         url = f"{constants.BASE_URL}/connectors/direct-upload-url"
         params = {"client_id": client_id, "purpose": purpose, "file_name": file_name}
         headers = self._build_headers(client_id=client_id)
 
         try:
-            async with self._session.get(
-                url, params=params, headers=headers
-            ) as response:
-                response_data = await self._handle_response(response)
-                return response_data["response"]
+            response_data = await self._request(
+                "GET", url, params=params, headers=headers
+            )
+            return response_data["response"]
         except Exception as e:
             logging.exception(f"Error getting direct upload url: {e}")
             raise
@@ -145,20 +204,17 @@ class AsyncLabellerrClient:
         """
         Async version of connect_local_files.
         """
-        await self._ensure_session()
-
         url = f"{constants.BASE_URL}/connectors/connect/local"
         params = {"client_id": client_id}
         headers = self._build_headers(client_id=client_id)
 
-        body = {"file_names": file_names}
+        body: Dict[str, Any] = {"file_names": file_names}
         if connection_id is not None:
             body["temporary_connection_id"] = connection_id
 
-        async with self._session.post(
-            url, params=params, headers=headers, json=body
-        ) as response:
-            return await self._handle_response(response)
+        return await self._request(
+            "POST", url, params=params, headers=headers, json=body
+        )
 
     async def upload_file_stream(
         self, signed_url: str, file_path: str, chunk_size: int = 8192
@@ -180,6 +236,9 @@ class AsyncLabellerrClient:
         }
 
         async with aiofiles.open(file_path, "rb") as f:
+            assert (
+                self._session is not None
+            ), "Session must be initialized before uploading files"
             async with self._session.put(
                 signed_url, headers=headers, data=f
             ) as response:
@@ -189,7 +248,7 @@ class AsyncLabellerrClient:
                 return True
 
     async def upload_files_batch(
-        self, client_id: str, files_list: List[str], batch_size: int = 5
+        self, client_id: str, files_list: Union[List[str], str], batch_size: int = 5
     ) -> str:
         """
         Async batch file upload with concurrency control.
@@ -199,25 +258,28 @@ class AsyncLabellerrClient:
         :param batch_size: Number of concurrent uploads
         :return: Connection ID
         """
+        normalized_files_list: List[str]
         if isinstance(files_list, str):
-            files_list = files_list.split(",")
-        elif not isinstance(files_list, list):
+            normalized_files_list = files_list.split(",")
+        elif isinstance(files_list, list):
+            normalized_files_list = files_list
+        else:
             raise LabellerrError(
                 "files_list must be either a list or a comma-separated string"
             )
 
-        if len(files_list) == 0:
+        if len(normalized_files_list) == 0:
             raise LabellerrError("No files to upload")
 
         # Validate files exist
-        for file_path in files_list:
+        for file_path in normalized_files_list:
             if not os.path.exists(file_path):
                 raise LabellerrError(f"File does not exist: {file_path}")
             if not os.path.isfile(file_path):
                 raise LabellerrError(f"Path is not a file: {file_path}")
 
         # Get upload URLs and connection ID
-        file_names = [os.path.basename(f) for f in files_list]
+        file_names = [os.path.basename(f) for f in normalized_files_list]
         response = await self.connect_local_files(client_id, file_names)
 
         connection_id = response["response"]["temporary_connection_id"]
@@ -233,14 +295,14 @@ class AsyncLabellerrClient:
                 return await self.upload_file_stream(signed_url, file_path)
 
         # Upload files concurrently
-        tasks = [upload_single_file(file_path) for file_path in files_list]
+        tasks = [upload_single_file(file_path) for file_path in normalized_files_list]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Check for errors
         failed_files = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                failed_files.append((files_list[i], str(result)))
+                failed_files.append((normalized_files_list[i], str(result)))
 
         if failed_files:
             error_msg = (
@@ -256,16 +318,13 @@ class AsyncLabellerrClient:
         """
         Async version of get_dataset.
         """
-        await self._ensure_session()
-
         url = f"{constants.BASE_URL}/datasets/{dataset_id}"
         params = {"client_id": workspace_id, "uuid": str(uuid.uuid4())}
         headers = self._build_headers(
             extra_headers={"Origin": constants.ALLOWED_ORIGINS}
         )
 
-        async with self._session.get(url, params=params, headers=headers) as response:
-            return await self._handle_response(response)
+        return await self._request("GET", url, params=params, headers=headers)
 
     async def create_dataset(
         self,
@@ -275,8 +334,6 @@ class AsyncLabellerrClient:
         """
         Async version of create_dataset.
         """
-        await self._ensure_session()
-
         try:
             # Validate data_type
             if dataset_config.get("data_type") not in constants.DATA_TYPES:
@@ -298,7 +355,7 @@ class AsyncLabellerrClient:
                 extra_headers={"content-type": "application/json"},
             )
 
-            payload = {
+            payload: Dict[str, Any] = {
                 "dataset_name": dataset_config["dataset_name"],
                 "dataset_description": dataset_config.get("dataset_description", ""),
                 "data_type": dataset_config["data_type"],
@@ -307,12 +364,16 @@ class AsyncLabellerrClient:
                 "client_id": dataset_config["client_id"],
             }
 
-            async with self._session.post(
-                url, params=params, headers=headers, json=payload
-            ) as response:
-                response_data = await self._handle_response(response, unique_id)
-                dataset_id = response_data["response"]["dataset_id"]
-                return {"response": "success", "dataset_id": dataset_id}
+            response_data = await self._request(
+                "POST",
+                url,
+                params=params,
+                headers=headers,
+                json=payload,
+                request_id=unique_id,
+            )
+            dataset_id = response_data["response"]["dataset_id"]
+            return {"response": "success", "dataset_id": dataset_id}
 
         except LabellerrError as e:
             logging.error(f"Failed to create dataset: {e}")
