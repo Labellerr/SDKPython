@@ -29,7 +29,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from labellerr.client import LabellerrClient
 
 # Import tool definitions
-from .tools import ALL_TOOLS
+try:
+    from .tools import ALL_TOOLS
+except ImportError:
+    # If running as a script, use absolute import
+    from tools import ALL_TOOLS
 
 # Configure logging
 logging.basicConfig(
@@ -202,7 +206,17 @@ class LabellerrMCPServer:
         try:
             if name == "project_create":
                 # Use the initiate_create_project method which handles the full flow
-                payload = {**args, "client_id": self.client_id}
+                # Ensure required parameters have defaults
+                payload = {
+                    **args,
+                    "client_id": self.client_id,
+                    "autolabel": args.get("autolabel", False),  # Default to False if not provided
+                }
+                
+                # If no files provided, add an empty list to prevent error
+                if "files_to_upload" not in payload and "folder_to_upload" not in payload:
+                    payload["files_to_upload"] = []
+                
                 result = await asyncio.to_thread(
                     self.labellerr_client.initiate_create_project,
                     payload
@@ -272,7 +286,11 @@ class LabellerrMCPServer:
         
         try:
             if name == "dataset_create":
-                dataset_config = {**args, "client_id": self.client_id}
+                dataset_config = {
+                    **args,
+                    "client_id": self.client_id,
+                    "connection_id": None  # Add connection_id with None as default
+                }
                 result = await asyncio.to_thread(
                     self.labellerr_client.create_dataset,
                     dataset_config

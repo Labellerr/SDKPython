@@ -77,7 +77,7 @@ PROJECT_TOOLS = [
                 },
                 "autolabel": {
                     "type": "boolean",
-                    "description": "Enable auto-labeling",
+                    "description": "Enable auto-labeling (required, set to false if not using)",
                     "default": False
                 },
                 "folder_to_upload": {
