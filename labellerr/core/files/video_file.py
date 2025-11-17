@@ -4,7 +4,7 @@ import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import requests
 
@@ -61,6 +61,7 @@ class LabellerrVideoFile(LabellerrFile):
                 "frame_end": frame_end,
                 "project_id": self.project_id,
                 "uuid": unique_id,
+                "client_id": self.client.client_id,
             }
 
             response = self.client.make_request(
@@ -235,7 +236,7 @@ class LabellerrVideoFile(LabellerrFile):
             raise LabellerrError(f"Error while joining frames: {str(e)}")
 
     def download_create_video_auto_cleanup(
-        self, output_folder: str = "./Labellerr_datastets"
+        self, output_folder: str = "./Labellerr_datasets"
     ):
         """
         Download frames, create video, and automatically clean up temporary frames.
@@ -257,6 +258,8 @@ class LabellerrVideoFile(LabellerrFile):
             # Step 2: Fetch frame data from API
             print(f"\n[1/4] Fetching frame data from API (0 to {total_frames})...")
             frames_data = self.get_frames(frame_start=0, frame_end=total_frames)
+
+            # print(frames_data)
 
             if not frames_data:
                 raise LabellerrError("No frame data retrieved from API")
@@ -313,7 +316,7 @@ class LabellerrVideoFile(LabellerrFile):
             print(f"\n{'='*60}")
             print("Processing complete!")
             print(f"Video saved to: {video_output_path}")
-            print("{'='*60}\n")
+            print(f"{'='*60}\n")
 
             return result
 
