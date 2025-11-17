@@ -53,7 +53,7 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: make test
+        run: make test-unit
 
       - name: Run integration tests
-        run: make integration-test
+        run: make test-integration

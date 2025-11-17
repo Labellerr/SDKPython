@@ -1,8 +1,8 @@
 .PHONY: help install clean test lint format version info
-
+-include .env
 SOURCE_DIR := labellerr
-PYTHON := python3
-PIP := pip3
+PYTHON := python
+PIP := pip
 
 help:
 	@echo "Labellerr SDK - Simple Development Commands"
@@ -22,8 +22,23 @@ clean:
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
 	rm -rf build/ dist/ .coverage .pytest_cache/ .mypy_cache/
 
-test:
+test: ## Run all tests
 	$(PYTHON) -m pytest tests/ -v
+
+test-unit: ## Run only unit tests
+	$(PYTHON) -m pytest tests/unit/ -v -m "unit"
+
+test-integration: ## Run only integration tests (requires credentials)
+	$(PYTHON) -m pytest tests/integration/ -v -m "integration"
+
+test-fast: ## Run fast tests only (exclude slow tests)
+	$(PYTHON) -m pytest tests/ -v -m "not slow"
+
+test-aws: ## Run AWS-specific tests
+	$(PYTHON) -m pytest tests/ -v -m "aws"
+
+test-gcs: ## Run GCS-specific tests
+	$(PYTHON) -m pytest tests/ -v -m "gcs"
 
 lint:
 	flake8 .
@@ -57,7 +72,7 @@ check-release: ## Check if everything is ready for release
 	@echo "4. Push and create PR to main (patch) or develop (minor)"
 
 integration-test:
-	$(PYTHON) -m pytest  -v labellerr_integration_case_tests.py
+	$(PYTHON) -m pytest  -v labellerr_integration_tests.py
 
 pre-commit-install:
 	pip install pre-commit

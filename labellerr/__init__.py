@@ -2,7 +2,7 @@
 
 from .async_client import AsyncLabellerrClient
 from .client import LabellerrClient
-from .exceptions import LabellerrError
+from .core.exceptions import LabellerrError
 
 # Get version from package metadata
 try:

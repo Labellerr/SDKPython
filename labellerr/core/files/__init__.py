@@ -7,8 +7,8 @@ from labellerr.core.files.image_file import LabellerrImageFile
 from labellerr.core.files.video_file import LabellerrVideoFile
 
 __all__ = [
-    'LabellerrFile',
-    'LabellerrImageFile', 
-    'LabellerrVideoFile',
-    'LabellerrFileMeta'
+    "LabellerrFile",
+    "LabellerrImageFile",
+    "LabellerrVideoFile",
+    "LabellerrFileMeta",
 ]

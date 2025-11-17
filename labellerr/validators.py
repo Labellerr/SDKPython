@@ -6,8 +6,8 @@ import functools
 import logging
 from typing import Callable, List
 
-from . import constants
-from .exceptions import LabellerrError
+from .core import constants
+from .core.exceptions import LabellerrError
 
 
 def validate_required(params: List[str]):

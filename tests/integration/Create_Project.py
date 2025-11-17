@@ -5,14 +5,24 @@ sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SDKPython"))
 )
 
+
 # Add the root directory to Python path
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(root_dir)
 
 import uuid
 
-from SDKPython.labellerr.client import LabellerrClient
-from SDKPython.labellerr.exceptions import LabellerrError
+import pytest
+
+from labellerr import LabellerrClient, LabellerrError
+from labellerr.core.projects import create_project
+
+
+@pytest.fixture
+def labellerr_client():
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    return LabellerrClient(api_key, api_secret)
 
 
 def create_project_all_option_type(
@@ -21,6 +31,7 @@ def create_project_all_option_type(
     """Creates a project with all option types using the Labellerr SDK."""
 
     client = LabellerrClient(api_key, api_secret)
+
     project_payload = {
         "client_id": client_id,
         "dataset_name": "Testing_dataset",
@@ -122,7 +133,7 @@ def create_project_all_option_type(
         "folder_to_upload": path_to_images,
     }
     try:
-        result = client.initiate_create_project(project_payload)
+        result = create_project(client, project_payload)
         print(
             f"[ALL OPTION TYPE] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -135,7 +146,7 @@ def create_project_polygon_boundingbox_project(
     api_key, api_secret, client_id, email, path_to_images
 ):
 
-    client = LabellerrClient(api_key, api_secret)
+    client = LabellerrClient(api_key, api_secret, client_id)
 
     project_payload = {
         "client_id": client_id,
@@ -172,7 +183,7 @@ def create_project_polygon_boundingbox_project(
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = client.projects.create_project(project_payload)
         print(
             f"[polygon_boundingbox] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -242,7 +253,7 @@ def create_project_select_dropdown_radio(
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = client.projects.create_project(project_payload)
         print(
             f"[select_dropdown_radio] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -297,7 +308,7 @@ def create_project_polygon_input(api_key, api_secret, client_id, email, path_to_
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = client.projects.create_project(project_payload)
         print(
             f"[polygon_input_project] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -306,10 +317,8 @@ def create_project_polygon_input(api_key, api_secret, client_id, email, path_to_
 
 
 def create_project_input_select_radio(
-    api_key, api_secret, client_id, email, path_to_images
+    api_key, api_secret, client_id, email, path_to_images, projects
 ):
-
-    client = LabellerrClient(api_key, api_secret)
 
     project_payload = {
         "client_id": client_id,
@@ -364,7 +373,7 @@ def create_project_input_select_radio(
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = projects.create_project(project_payload)
         print(
             f"[input_select_radio] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -435,7 +444,7 @@ def create_project_boundingbox_dropdown_input(
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = client.projects.create_project(project_payload)
         print(
             f"[boundingbox_dropdown_input] Project ID: {result['project_id']['response']['project_id']}"
         )
@@ -493,7 +502,7 @@ def create_project_radio_dropdown(
     }
 
     try:
-        result = client.initiate_create_project(project_payload)
+        result = client.projects.create_project(project_payload)
         print(
             f"[radio_dropdown] Project ID: {result['project_id']['response']['project_id']}"
         )

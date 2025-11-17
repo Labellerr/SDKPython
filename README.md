@@ -402,7 +402,7 @@ The Labellerr SDK uses a custom exception class, `LabellerrError`, to indicate i
 from labellerr.exceptions import LabellerrError
 
 try:
-    result = client.initiate_create_project(payload)
+    result = client.create_project(payload)
 except LabellerrError as e:
     print(f"An error occurred: {e}")
 ```
@@ -420,10 +420,10 @@ The Labellerr SDK uses **class-level decorators** to automatically apply logging
 
 ### Benefits
 
-✓ **No Boilerplate**: You don't need to add logging or error handling code in every method
-✓ **Consistency**: All methods follow the same logging pattern
-✓ **Maintainability**: Changes to logging or error handling are centralized
-✓ **Debugging**: Comprehensive logs help troubleshoot issues quickly
+**No Boilerplate**: You don't need to add logging or error handling code in every method
+**Consistency**: All methods follow the same logging pattern
+**Maintainability**: Changes to logging or error handling are centralized
+**Debugging**: Comprehensive logs help troubleshoot issues quickly
 
 ### How It Works
 
