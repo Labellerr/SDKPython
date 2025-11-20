@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Labellerr MCP Server
-A Model Context Protocol server for the Labellerr SDK
+Labellerr MCP Server - Pure API Implementation
+
+A Model Context Protocol server for the Labellerr platform that makes
+direct REST API calls, completely independent of SDK implementation.
 """
 
 import os
@@ -11,7 +13,6 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -24,15 +25,17 @@ from mcp.types import (
     ResourceTemplate,
 )
 
-# Import the Labellerr client from the SDK
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from labellerr.client import LabellerrClient
+# Import the pure API client (no SDK dependencies)
+try:
+    from .api_client import LabellerrAPIClient, LabellerrAPIError
+except ImportError:
+    # If running as a script, use absolute import
+    from api_client import LabellerrAPIClient, LabellerrAPIError
 
 # Import tool definitions
 try:
     from .tools import ALL_TOOLS
 except ImportError:
-    # If running as a script, use absolute import
     from tools import ALL_TOOLS
 
 # Configure logging
@@ -44,24 +47,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class LabellerrMCPServer:
-    """MCP Server for Labellerr SDK operations"""
+class LabellerrMCPServer: #main server object
+    """MCP Server for Labellerr - Pure API Implementation"""
     
     def __init__(self):
         self.server = Server("labellerr-mcp-server")
-        self.labellerr_client: Optional[LabellerrClient] = None
+        self.api_client: Optional[LabellerrAPIClient] = None
+        self.client_id: Optional[str] = None
         self.operation_history: List[Dict[str, Any]] = []
         self.active_projects: Dict[str, Dict[str, Any]] = {}
         self.active_datasets: Dict[str, Dict[str, Any]] = {}
         
-        # Initialize client
+        # Initialize API client
         self._initialize_client()
         
         # Setup request handlers
         self._setup_handlers()
         
     def _initialize_client(self):
-        """Initialize Labellerr client with credentials"""
+        """Initialize Labellerr API client with credentials from environment"""
         api_key = os.getenv("LABELLERR_API_KEY")
         api_secret = os.getenv("LABELLERR_API_SECRET")
         self.client_id = os.getenv("LABELLERR_CLIENT_ID")
@@ -74,18 +78,19 @@ class LabellerrMCPServer:
             return
         
         try:
-            self.labellerr_client = LabellerrClient(
+            self.api_client = LabellerrAPIClient(
                 api_key=api_key,
-                api_secret=api_secret
+                api_secret=api_secret,
+                client_id=self.client_id
             )
-            logger.info("Labellerr client initialized successfully")
+            logger.info("Labellerr API client initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Labellerr client: {e}")
+            logger.error(f"Failed to initialize Labellerr API client: {e}")
     
     def _setup_handlers(self):
         """Setup MCP request handlers"""
         
-        @self.server.list_tools()
+        @self.server.list_tools() # list all available tools
         async def list_tools() -> list[Tool]:
             """List all available tools"""
             return [
@@ -97,14 +102,14 @@ class LabellerrMCPServer:
                 for tool in ALL_TOOLS
             ]
         
-        @self.server.call_tool()
+        @self.server.call_tool() # execute a tool
         async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             """Handle tool execution"""
-            if not self.labellerr_client:
+            if not self.api_client:
                 return [TextContent(
                     type="text",
                     text=json.dumps({
-                        "error": "Labellerr client not initialized. Please check environment variables."
+                        "error": "API client not initialized. Please check environment variables."
                     }, indent=2)
                 )]
             
@@ -126,6 +131,26 @@ class LabellerrMCPServer:
                 return [TextContent(
                     type="text",
                     text=json.dumps(result, indent=2)
+                )]
+            
+            except LabellerrAPIError as e:
+                logger.error(f"API error in tool execution: {e}", exc_info=True)
+                
+                # Log operation for history
+                self.operation_history.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "tool": name,
+                    "status": "failed",
+                    "error": str(e),
+                    "status_code": e.status_code
+                })
+                
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": f"API Error {e.status_code}: {e.message}",
+                        "details": e.response_data
+                    }, indent=2)
                 )]
             
             except Exception as e:
@@ -155,9 +180,9 @@ class LabellerrMCPServer:
             for project_id, project in self.active_projects.items():
                 resources.append(Resource(
                     uri=f"labellerr://project/{project_id}",
-                    name=project.get("name", project_id),
+                    name=project.get("project_name", project_id),
                     mimeType="application/json",
-                    description=f"Project: {project.get('name', project_id)} ({project.get('dataType', 'unknown')})"
+                    description=f"Project: {project.get('project_name', project_id)} ({project.get('data_type', 'unknown')})"
                 ))
             
             # Add active datasets as resources
@@ -199,67 +224,174 @@ class LabellerrMCPServer:
             raise ValueError(f"Resource not found: {uri}")
     
     async def _handle_project_tool(self, name: str, args: dict) -> dict:
-        """Handle project management tools"""
+        """Handle project management tools using direct API calls"""
         start_time = datetime.now()
         result = {}
         
         try:
             if name == "project_create":
-                # Use the initiate_create_project method which handles the full flow
-                # Ensure required parameters have defaults
-                payload = {
-                    **args,
-                    "client_id": self.client_id,
-                    "autolabel": args.get("autolabel", False),  # Default to False if not provided
-                }
+                # Simplified project creation - requires dataset_id and template_id
+                # This enforces an explicit three-step workflow:
+                # Step 1: User creates dataset → gets dataset_id
+                # Step 2: User creates template → gets template_id  
+                # Step 3: User creates project with both IDs
                 
-                # If no files provided, add an empty list to prevent error
-                if "files_to_upload" not in payload and "folder_to_upload" not in payload:
-                    payload["files_to_upload"] = []
+                dataset_id = args.get("dataset_id")
+                template_id = args.get("annotation_template_id")
+                
+                # Require both IDs to be provided
+                if not dataset_id:
+                    return {
+                        "error": "dataset_id is required",
+                        "message": "Please create a dataset first using one of these tools:",
+                        "workflow": {
+                            "step_1": "Create dataset with files: dataset_upload_folder or dataset_upload_files",
+                            "step_2": "Create annotation template: template_create",
+                            "step_3": "Create project: project_create (with dataset_id and annotation_template_id)"
+                        },
+                        "example": {
+                            "step_1_tool": "dataset_upload_folder",
+                            "step_1_args": {
+                                "folder_path": "/path/to/images",
+                                "data_type": "image"
+                            },
+                            "step_2_tool": "template_create",
+                            "step_2_args": {
+                                "template_name": "My Template",
+                                "data_type": "image",
+                                "questions": [{"question": "Label", "question_type": "BoundingBox", "required": True}]
+                            },
+                            "step_3_tool": "project_create",
+                            "step_3_args": {
+                                "project_name": "My Project",
+                                "data_type": "image",
+                                "dataset_id": "<from_step_1>",
+                                "annotation_template_id": "<from_step_2>",
+                                "created_by": "user@example.com"
+                            }
+                        }
+                    }
+                
+                if not template_id:
+                    return {
+                        "error": "annotation_template_id is required",
+                        "message": "Please create an annotation template first using template_create tool",
+                        "workflow": {
+                            "step_1": "✓ Dataset created (dataset_id provided)",
+                            "step_2": "Create annotation template: template_create",
+                            "step_3": "Create project: project_create (with dataset_id and annotation_template_id)"
+                        },
+                        "example": {
+                            "tool": "template_create",
+                            "args": {
+                                "template_name": "My Template",
+                                "data_type": args.get("data_type", "image"),
+                                "questions": [
+                                    {
+                                        "question_number": 1,
+                                        "question": "Object Detection",
+                                        "question_type": "BoundingBox",
+                                        "required": True,
+                                        "options": [{"option_name": "Object"}],
+                                        "color": "#FF0000"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                
+                # Validate dataset exists and is ready
+                logger.info(f"Validating dataset {dataset_id}...")
+                try:
+                    dataset_info = await asyncio.to_thread(
+                        self.api_client.get_dataset,
+                        dataset_id
+                    )
+                    
+                    dataset_status = dataset_info.get("response", {}).get("status_code")
+                    if dataset_status != 300:
+                        return {
+                            "error": f"Dataset {dataset_id} is not ready",
+                            "dataset_id": dataset_id,
+                            "status_code": dataset_status,
+                            "message": "Dataset is still processing. Please wait and try again.",
+                            "hint": "You can check dataset status using dataset_get tool"
+                        }
+                    
+                    logger.info(f"✓ Dataset {dataset_id} is ready")
+                except Exception as e:
+                    return {
+                        "error": f"Failed to validate dataset {dataset_id}",
+                        "details": str(e)
+                    }
+                
+                # Create project (Step 3)
+                logger.info(f"Creating project '{args['project_name']}'...")
+                
+                rotations = args.get("rotation_config", {
+                    "annotation_rotation_count": 1,
+                    "review_rotation_count": 1,
+                    "client_review_rotation_count": 1
+                })
                 
                 result = await asyncio.to_thread(
-                    self.labellerr_client.initiate_create_project,
-                    payload
+                    self.api_client.create_project,
+                    project_name=args["project_name"],
+                    data_type=args["data_type"],
+                    attached_datasets=[dataset_id],
+                    annotation_template_id=template_id,
+                    rotations=rotations,
+                    use_ai=args.get("autolabel", False),
+                    created_by=args.get("created_by")
                 )
-                # Try to cache the project if we have a valid ID
-                try:
-                    project_id = result.get("project_id")
-                    if project_id and isinstance(project_id, str):
-                        self.active_projects[project_id] = {
-                            "id": project_id,
-                            "name": args.get("project_name"),
-                            "dataType": args.get("data_type"),
-                            "createdAt": datetime.now().isoformat()
-                        }
-                except Exception:
-                    pass  # Don't fail if caching doesn't work
+                
+                # Cache the project
+                if result.get("response", {}).get("project_id"):
+                    project_id = result["response"]["project_id"]
+                    self.active_projects[project_id] = {
+                        "project_id": project_id,
+                        "project_name": args["project_name"],
+                        "data_type": args["data_type"],
+                        "dataset_id": dataset_id,
+                        "template_id": template_id,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    logger.info(f"✓ Project created successfully: {project_id}")
+                    
+                    # Add helpful response
+                    result["workflow_completed"] = {
+                        "step_1": f"✓ Dataset: {dataset_id}",
+                        "step_2": f"✓ Template: {template_id}",
+                        "step_3": f"✓ Project: {project_id}"
+                    }
             
             elif name == "project_list":
-                result = await asyncio.to_thread(
-                    self.labellerr_client.get_all_project_per_client_id,
-                    self.client_id
-                )
+                result = await asyncio.to_thread(self.api_client.list_projects)
+                
                 # Update active projects cache
-                if result.get("response"):
+                # Note: API returns list directly in response, not wrapped in "projects" key
+                if result.get("response") and isinstance(result["response"], list):
                     for project in result["response"]:
                         project_id = project.get("project_id")
                         if project_id:
                             self.active_projects[project_id] = project
             
             elif name == "project_get":
-                # Note: Need to find the right method for getting a single project
-                # For now, get all and filter
-                all_projects = await asyncio.to_thread(
-                    self.labellerr_client.get_all_project_per_client_id,
-                    self.client_id
+                result = await asyncio.to_thread(
+                    self.api_client.get_project,
+                    args["project_id"]
                 )
-                projects = all_projects.get("response", [])
-                project = next((p for p in projects if p.get("project_id") == args["project_id"]), None)
-                result = {"project": project} if project else {"error": "Project not found"}
+                
+                # Update cache
+                if result.get("response"):
+                    self.active_projects[args["project_id"]] = result["response"]
             
             elif name == "project_update_rotation":
-                # This method needs implementation in the SDK or use direct API call
-                result = {"error": "Update rotation not yet implemented in SDK"}
+                result = await asyncio.to_thread(
+                    self.api_client.update_project_rotations,
+                    args["project_id"],
+                    args["rotation_config"]
+                )
             
             else:
                 result = {"error": f"Unknown project tool: {name}"}
@@ -270,7 +402,7 @@ class LabellerrMCPServer:
                 "tool": name,
                 "duration": (datetime.now() - start_time).total_seconds(),
                 "status": "success",
-                "args": args
+                "args": {k: v for k, v in args.items() if k not in ["files_to_upload", "folder_to_upload"]}
             })
             
             return result
@@ -280,75 +412,131 @@ class LabellerrMCPServer:
             raise
     
     async def _handle_dataset_tool(self, name: str, args: dict) -> dict:
-        """Handle dataset management tools"""
+        """Handle dataset management tools using direct API calls"""
         start_time = datetime.now()
         result = {}
         
         try:
             if name == "dataset_create":
-                dataset_config = {
-                    **args,
-                    "client_id": self.client_id,
-                    "connection_id": None  # Add connection_id with None as default
-                }
+                # Complete dataset creation workflow with automatic file upload and status polling
+                connection_id = args.get("connection_id")
+                
+                # STEP 1: Upload files if folder_path or files provided
+                if not connection_id:
+                    if args.get("folder_path"):
+                        logger.info(f"[1/3] Uploading files from {args['folder_path']}...")
+                        connection_id = await asyncio.to_thread(
+                            self.api_client.upload_folder_to_connector,
+                            args["folder_path"],
+                            args["data_type"]
+                        )
+                        logger.info(f"✓ Files uploaded! Connection ID: {connection_id}")
+                    elif args.get("files"):
+                        logger.info(f"[1/3] Uploading {len(args['files'])} files...")
+                        connection_id = await asyncio.to_thread(
+                            self.api_client.upload_files_to_connector,
+                            args["files"]
+                        )
+                        logger.info(f"✓ Files uploaded! Connection ID: {connection_id}")
+                    else:
+                        return {
+                            "error": "Either connection_id, folder_path, or files must be provided",
+                            "hint": "Provide folder_path to upload an entire folder, or files array for specific files"
+                        }
+                
+                # STEP 2: Create dataset with connection_id
+                logger.info(f"[2/3] Creating dataset '{args['dataset_name']}'...")
                 result = await asyncio.to_thread(
-                    self.labellerr_client.create_dataset,
-                    dataset_config
+                    self.api_client.create_dataset,
+                    dataset_name=args["dataset_name"],
+                    data_type=args["data_type"],
+                    dataset_description=args.get("dataset_description", ""),
+                    connection_id=connection_id
                 )
-                if result.get("dataset_id"):
-                    self.active_datasets[result["dataset_id"]] = {
-                        "id": result["dataset_id"],
-                        "name": args.get("dataset_name"),
-                        "dataType": args.get("data_type"),
-                        "createdAt": datetime.now().isoformat()
+                
+                dataset_id = result.get("response", {}).get("dataset_id")
+                if not dataset_id:
+                    return {"error": "Failed to create dataset", "details": result}
+                
+                logger.info(f"✓ Dataset created! Dataset ID: {dataset_id}")
+                
+                # STEP 3: Wait for dataset processing (default: enabled)
+                if args.get("wait_for_processing", True):
+                    logger.info("[3/3] Waiting for dataset to be processed...")
+                    try:
+                        dataset_status = await asyncio.to_thread(
+                            self.api_client.poll_dataset_status,
+                            dataset_id,
+                            interval=2.0,
+                            timeout=args.get("processing_timeout", 300)
+                        )
+                        
+                        status_code = dataset_status.get("response", {}).get("status_code")
+                        files_count = dataset_status.get("response", {}).get("files_count", 0)
+                        
+                        if status_code == 300:
+                            logger.info(f"✓ Dataset ready! Files: {files_count}")
+                            result["files_count"] = files_count
+                            result["status"] = "ready"
+                            result["status_code"] = 300
+                        else:
+                            logger.warning(f"Dataset processing completed with status {status_code}")
+                            result["status_code"] = status_code
+                            result["status"] = "processing_failed"
+                    except Exception as e:
+                        logger.error(f"Error waiting for dataset processing: {e}")
+                        result["warning"] = f"Dataset created but processing status unknown: {str(e)}"
+                        result["status"] = "unknown"
+                
+                # Cache the dataset
+                if dataset_id:
+                    self.active_datasets[dataset_id] = {
+                        "dataset_id": dataset_id,
+                        "name": args["dataset_name"],
+                        "data_type": args["data_type"],
+                        "created_at": datetime.now().isoformat()
                     }
             
             elif name == "dataset_upload_files":
-                result = await asyncio.to_thread(
-                    self.labellerr_client.upload_files,
-                    self.client_id,
+                connection_id = await asyncio.to_thread(
+                    self.api_client.upload_files_to_connector,
                     args["files"]
                 )
+                result = {"connection_id": connection_id, "success": True}
             
             elif name == "dataset_upload_folder":
-                data_config = {
-                    "client_id": self.client_id,
-                    "folder_path": args["folder_path"],
-                    "data_type": args["data_type"]
-                }
-                result = await asyncio.to_thread(
-                    self.labellerr_client.upload_folder_files_to_dataset,
-                    data_config
+                connection_id = await asyncio.to_thread(
+                    self.api_client.upload_folder_to_connector,
+                    args["folder_path"],
+                    args["data_type"]
                 )
+                result = {"connection_id": connection_id, "success": True}
             
             elif name == "dataset_list":
                 data_type = args.get("data_type", "image")
+                scope = args.get("scope", "client")
                 result = await asyncio.to_thread(
-                    self.labellerr_client.get_all_dataset,
-                    self.client_id,
-                    data_type,
-                    "",  # project_id (empty for all)
-                    "client"  # scope
+                    self.api_client.list_datasets,
+                    data_type=data_type,
+                    scope=scope
                 )
+                
                 # Update datasets cache
-                response = result.get("response", {})
-                if response.get("linked"):
-                    for dataset in response["linked"]:
-                        dataset_id = dataset.get("dataset_id")
-                        if dataset_id:
-                            self.active_datasets[dataset_id] = dataset
-                if response.get("unlinked"):
-                    for dataset in response["unlinked"]:
+                if result.get("response", {}).get("datasets"):
+                    for dataset in result["response"]["datasets"]:
                         dataset_id = dataset.get("dataset_id")
                         if dataset_id:
                             self.active_datasets[dataset_id] = dataset
             
             elif name == "dataset_get":
                 result = await asyncio.to_thread(
-                    self.labellerr_client.get_dataset,
-                    self.client_id,
+                    self.api_client.get_dataset,
                     args["dataset_id"]
                 )
+                
+                # Update cache
+                if result.get("response"):
+                    self.active_datasets[args["dataset_id"]] = result["response"]
             
             else:
                 result = {"error": f"Unknown dataset tool: {name}"}
@@ -367,38 +555,48 @@ class LabellerrMCPServer:
             raise
     
     async def _handle_annotation_tool(self, name: str, args: dict) -> dict:
-        """Handle annotation tools"""
+        """Handle annotation tools using direct API calls"""
         start_time = datetime.now()
         result = {}
         
         try:
-            if name == "annotation_upload_preannotations":
+            if name == "template_create":
+                logger.info(f"Creating annotation template: {args['template_name']}")
                 result = await asyncio.to_thread(
-                    self.labellerr_client.upload_preannotation_data,
-                    args["project_id"],
-                    self.client_id,
-                    args["annotation_format"],
-                    args["annotation_file"]
+                    self.api_client.create_annotation_template,
+                    template_name=args["template_name"],
+                    data_type=args["data_type"],
+                    questions=args["questions"]
                 )
-            
-            elif name == "annotation_upload_preannotations_async":
-                result = await asyncio.to_thread(
-                    self.labellerr_client.upload_preannotation_data_async,
-                    args["project_id"],
-                    self.client_id,
-                    args["annotation_format"],
-                    args["annotation_file"]
-                )
+                
+                # Log success
+                if result.get("response", {}).get("template_id"):
+                    template_id = result["response"]["template_id"]
+                    logger.info(f"Template created successfully: {template_id}")
             
             elif name == "annotation_export":
-                # Note: Need to check SDK for export methods
-                result = {"error": "Export not yet implemented - check SDK for method"}
+                result = await asyncio.to_thread(
+                    self.api_client.create_export,
+                    project_id=args["project_id"],
+                    export_name=args["export_name"],
+                    export_description=args.get("export_description", ""),
+                    export_format=args["export_format"],
+                    statuses=args["statuses"]
+                )
             
             elif name == "annotation_check_export_status":
-                result = {"error": "Check export status not yet implemented - check SDK for method"}
+                result = await asyncio.to_thread(
+                    self.api_client.check_export_status,
+                    project_id=args["project_id"],
+                    report_ids=args["export_ids"]
+                )
             
             elif name == "annotation_download_export":
-                result = {"error": "Download export not yet implemented - check SDK for method"}
+                result = await asyncio.to_thread(
+                    self.api_client.get_export_download_url,
+                    project_id=args["project_id"],
+                    export_id=args["export_id"]
+                )
             
             else:
                 result = {"error": f"Unknown annotation tool: {name}"}
@@ -422,38 +620,26 @@ class LabellerrMCPServer:
         
         try:
             if name == "monitor_job_status":
-                # Return mock status - SDK may not have this method
+                # Return mock status - would need specific API endpoint
                 result = {
                     "success": True,
                     "job_id": args["job_id"],
-                    "status": "completed",
-                    "message": "Job status monitoring not yet implemented in SDK"
+                    "status": "This feature requires specific job tracking API",
+                    "message": "Use check_export_status for export jobs"
                 }
             
             elif name == "monitor_project_progress":
-                # Get project details and extract progress
-                all_projects = await asyncio.to_thread(
-                    self.labellerr_client.get_all_project_per_client_id,
-                    self.client_id
+                # Get project details for progress
+                project_result = await asyncio.to_thread(
+                    self.api_client.get_project,
+                    args["project_id"]
                 )
-                projects = all_projects.get("response", [])
-                project = next((p for p in projects if p.get("project_id") == args["project_id"]), None)
-                if project:
-                    result = {
-                        "success": True,
-                        "project_id": args["project_id"],
-                        "progress": project
-                    }
-                else:
-                    result = {"error": "Project not found"}
+                result = project_result
             
             elif name == "monitor_active_operations":
                 # Return current active operations from history
                 recent_ops = [
-                    op for op in self.operation_history
-                    if op.get("status") == "in_progress" or
-                    (op.get("timestamp") and 
-                     (datetime.now() - datetime.fromisoformat(op["timestamp"])).total_seconds() < 300)
+                    op for op in self.operation_history[-50:]  # Last 50 ops
                 ]
                 result = {
                     "active_operations": recent_ops,
@@ -463,7 +649,7 @@ class LabellerrMCPServer:
             elif name == "monitor_system_health":
                 result = {
                     "status": "healthy",
-                    "connected": self.labellerr_client is not None,
+                    "connected": self.api_client is not None,
                     "active_projects": len(self.active_projects),
                     "active_datasets": len(self.active_datasets),
                     "operations_performed": len(self.operation_history),
@@ -485,32 +671,27 @@ class LabellerrMCPServer:
         
         try:
             if name == "query_project_statistics":
-                # Get all projects and find the specific one
-                all_projects = await asyncio.to_thread(
-                    self.labellerr_client.get_all_project_per_client_id,
-                    self.client_id
+                # Get project details
+                project_result = await asyncio.to_thread(
+                    self.api_client.get_project,
+                    args["project_id"]
                 )
-                projects = all_projects.get("response", [])
-                project = next((p for p in projects if p.get("project_id") == args["project_id"]), None)
                 
-                if project:
-                    result = {
-                        "project_id": args["project_id"],
-                        "total_files": project.get("total_files", 0),
-                        "annotated_files": project.get("annotated_files", 0),
-                        "reviewed_files": project.get("reviewed_files", 0),
-                        "accepted_files": project.get("accepted_files", 0),
-                        "completion_percentage": project.get("completion_percentage", 0),
-                        "project_name": project.get("project_name", ""),
-                        "data_type": project.get("data_type", "")
-                    }
-                else:
-                    result = {"error": "Project not found"}
+                project = project_result.get("response", {})
+                result = {
+                    "project_id": args["project_id"],
+                    "project_name": project.get("project_name", ""),
+                    "data_type": project.get("data_type", ""),
+                    "total_files": project.get("total_files", 0),
+                    "annotated_files": project.get("annotated_files", 0),
+                    "reviewed_files": project.get("reviewed_files", 0),
+                    "accepted_files": project.get("accepted_files", 0),
+                    "completion_percentage": project.get("completion_percentage", 0)
+                }
             
             elif name == "query_dataset_info":
                 result = await asyncio.to_thread(
-                    self.labellerr_client.get_dataset,
-                    self.client_id,
+                    self.api_client.get_dataset,
                     args["dataset_id"]
                 )
             
@@ -528,12 +709,17 @@ class LabellerrMCPServer:
                 }
             
             elif name == "query_search_projects":
-                all_projects = await asyncio.to_thread(
-                    self.labellerr_client.get_all_project_per_client_id,
-                    self.client_id
+                # Get all projects and filter
+                projects_result = await asyncio.to_thread(
+                    self.api_client.list_projects
                 )
+                
                 query = args["query"].lower()
-                projects = all_projects.get("response", [])
+                # Note: API returns list directly in response, not wrapped in "projects" key
+                projects = projects_result.get("response", [])
+                if isinstance(projects, dict):
+                    projects = projects.get("projects", [])
+                
                 result = {
                     "projects": [
                         p for p in projects
@@ -553,8 +739,8 @@ class LabellerrMCPServer:
     
     async def run(self):
         """Run the MCP server"""
-        logger.info("Starting Labellerr MCP Server...")
-        logger.info(f"Connected to Labellerr API: {self.labellerr_client is not None}")
+        logger.info("Starting Labellerr MCP Server (Pure API Implementation)...")
+        logger.info(f"Connected to Labellerr API: {self.api_client is not None}")
         
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
@@ -572,4 +758,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

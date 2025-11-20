@@ -6,7 +6,7 @@ Tool definitions for the Labellerr MCP Server
 PROJECT_TOOLS = [
     {
         "name": "project_create",
-        "description": "Create a new annotation project with dataset and guidelines",
+        "description": "Create a new annotation project (Step 3 of 3). REQUIRES dataset_id and annotation_template_id. Use this AFTER creating a dataset (dataset_upload_folder/dataset_create) and template (template_create). This enforces an explicit three-step workflow where the AI assistant asks the user for dataset and template details interactively.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -14,49 +14,22 @@ PROJECT_TOOLS = [
                     "type": "string",
                     "description": "Name of the project"
                 },
-                "dataset_name": {
-                    "type": "string",
-                    "description": "Name of the dataset"
-                },
-                "dataset_description": {
-                    "type": "string",
-                    "description": "Description of the dataset"
-                },
                 "data_type": {
                     "type": "string",
                     "enum": ["image", "video", "audio", "document", "text"],
                     "description": "Type of data to annotate"
                 },
+                "dataset_id": {
+                    "type": "string",
+                    "description": "ID of the dataset (REQUIRED - must be created first using dataset_upload_folder or dataset_create)"
+                },
+                "annotation_template_id": {
+                    "type": "string",
+                    "description": "ID of the annotation template (REQUIRED - must be created first using template_create)"
+                },
                 "created_by": {
                     "type": "string",
                     "description": "Email of the creator"
-                },
-                "annotation_guide": {
-                    "type": "array",
-                    "description": "Array of annotation questions/guidelines",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "question": {
-                                "type": "string",
-                                "description": "The annotation question"
-                            },
-                            "option_type": {
-                                "type": "string",
-                                "enum": ["input", "radio", "boolean", "select", "dropdown", "stt", "imc", "BoundingBox", "polygon", "dot", "audio"],
-                                "description": "Type of annotation input"
-                            },
-                            "options": {
-                                "type": "array",
-                                "description": "Available options for the question"
-                            },
-                            "required": {
-                                "type": "boolean",
-                                "description": "Whether this question is required"
-                            }
-                        },
-                        "required": ["question", "option_type"]
-                    }
                 },
                 "rotation_config": {
                     "type": "object",
@@ -77,20 +50,11 @@ PROJECT_TOOLS = [
                 },
                 "autolabel": {
                     "type": "boolean",
-                    "description": "Enable auto-labeling (required, set to false if not using)",
+                    "description": "Enable auto-labeling",
                     "default": False
-                },
-                "folder_to_upload": {
-                    "type": "string",
-                    "description": "Path to folder containing files to upload"
-                },
-                "files_to_upload": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Array of file paths to upload"
                 }
             },
-            "required": ["project_name", "dataset_name", "data_type", "created_by", "annotation_guide"]
+            "required": ["project_name", "data_type", "dataset_id", "annotation_template_id", "created_by"]
         }
     },
     {
@@ -143,7 +107,7 @@ PROJECT_TOOLS = [
 DATASET_TOOLS = [
     {
         "name": "dataset_create",
-        "description": "Create a new dataset",
+        "description": "Create a new dataset with automatic file upload and status polling. Provide folder_path or files to upload data directly. The tool handles the complete workflow: upload files → create dataset → wait for processing → return ready dataset.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -159,6 +123,29 @@ DATASET_TOOLS = [
                     "type": "string",
                     "enum": ["image", "video", "audio", "document", "text"],
                     "description": "Type of data in the dataset"
+                },
+                "folder_path": {
+                    "type": "string",
+                    "description": "Path to folder containing files to upload (optional - for creating dataset with files)"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Array of file paths to upload (optional - alternative to folder_path)"
+                },
+                "connection_id": {
+                    "type": "string",
+                    "description": "Connection ID from previous upload (optional - if files already uploaded)"
+                },
+                "wait_for_processing": {
+                    "type": "boolean",
+                    "description": "Wait for dataset processing to complete (default: true)",
+                    "default": True
+                },
+                "processing_timeout": {
+                    "type": "number",
+                    "description": "Maximum seconds to wait for processing (default: 300)",
+                    "default": 300
                 }
             },
             "required": ["dataset_name", "data_type"]
@@ -237,8 +224,74 @@ DATASET_TOOLS = [
 # Annotation Tools
 ANNOTATION_TOOLS = [
     {
+        "name": "template_create",
+        "description": "Create an annotation template with questions/guidelines",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "template_name": {
+                    "type": "string",
+                    "description": "Name of the template"
+                },
+                "data_type": {
+                    "type": "string",
+                    "enum": ["image", "video", "audio", "document", "text"],
+                    "description": "Type of data for the template"
+                },
+                "questions": {
+                    "type": "array",
+                    "description": "Array of annotation questions",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_number": {
+                                "type": "number",
+                                "description": "Order number of the question"
+                            },
+                            "question": {
+                                "type": "string",
+                                "description": "The annotation question text"
+                            },
+                            "question_id": {
+                                "type": "string",
+                                "description": "Unique identifier for the question (auto-generated if not provided)"
+                            },
+                            "question_type": {
+                                "type": "string",
+                                "enum": ["BoundingBox", "polygon", "polyline", "dot", "input", "radio", "boolean", "select", "dropdown", "stt", "imc"],
+                                "description": "Type of annotation input"
+                            },
+                            "required": {
+                                "type": "boolean",
+                                "description": "Whether this question is required"
+                            },
+                            "options": {
+                                "type": "array",
+                                "description": "Available options (required for radio, boolean, select, dropdown, etc)",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "option_name": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            },
+                            "color": {
+                                "type": "string",
+                                "description": "Color code (required for BoundingBox, polygon, polyline, dot)"
+                            }
+                        },
+                        "required": ["question_number", "question", "question_type", "required"]
+                    }
+                }
+            },
+            "required": ["template_name", "data_type", "questions"]
+        }
+    },
+    {
         "name": "annotation_upload_preannotations",
-        "description": "Upload pre-annotations to a project (synchronous)",
+        "description": "Upload pre-annotations to a project (synchronous) - for pre-labeling existing projects",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -261,7 +314,7 @@ ANNOTATION_TOOLS = [
     },
     {
         "name": "annotation_upload_preannotations_async",
-        "description": "Upload pre-annotations to a project (asynchronous)",
+        "description": "Upload pre-annotations to a project (asynchronous) - for pre-labeling existing projects",
         "inputSchema": {
             "type": "object",
             "properties": {
