@@ -40,14 +40,14 @@ class MCPClient:
             raise ValueError("Server script must be a .py or .js file")
 
         command = "python3" if is_python else "node"
-        
+
         # Pass environment variables to the server
         env = {
             "LABELLERR_API_KEY": os.getenv("LABELLERR_API_KEY", ""),
             "LABELLERR_API_SECRET": os.getenv("LABELLERR_API_SECRET", ""),
             "LABELLERR_CLIENT_ID": os.getenv("LABELLERR_CLIENT_ID", ""),
         }
-        
+
         server_params = StdioServerParameters(
             command=command,
             args=[server_script_path],
@@ -178,5 +178,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
