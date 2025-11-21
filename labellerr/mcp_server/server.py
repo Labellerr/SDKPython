@@ -179,7 +179,8 @@ class LabellerrMCPServer:  # main server object
                     uri=f"labellerr://project/{project_id}",
                     name=project.get("project_name", project_id),
                     mimeType="application/json",
-                    description=f"Project: {project.get('project_name', project_id)} ({project.get('data_type', 'unknown')})"
+                    description=(f"Project: {project.get('project_name', project_id)} "
+                                 f"({project.get('data_type', 'unknown')})")
                 ))
 
             # Add active datasets as resources

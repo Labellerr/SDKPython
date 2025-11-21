@@ -6,7 +6,9 @@ Tool definitions for the Labellerr MCP Server
 PROJECT_TOOLS = [
     {
         "name": "project_create",
-        "description": "Create a new annotation project (Step 3 of 3). REQUIRES dataset_id and annotation_template_id. Use this AFTER creating a dataset (dataset_upload_folder/dataset_create) and template (template_create). This enforces an explicit three-step workflow where the AI assistant asks the user for dataset and template details interactively.",
+        "description": ("Create a new annotation project (Step 3 of 3). REQUIRES dataset_id and "
+                        "annotation_template_id. Use this AFTER creating a dataset and template. "
+                        "This enforces an explicit three-step workflow."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -21,11 +23,13 @@ PROJECT_TOOLS = [
                 },
                 "dataset_id": {
                     "type": "string",
-                    "description": "ID of the dataset (REQUIRED - must be created first using dataset_upload_folder or dataset_create)"
+                    "description": ("ID of the dataset (REQUIRED - must be created first using "
+                                    "dataset_upload_folder or dataset_create)")
                 },
                 "annotation_template_id": {
                     "type": "string",
-                    "description": "ID of the annotation template (REQUIRED - must be created first using template_create)"
+                    "description": ("ID of the annotation template (REQUIRED - must be created first "
+                                    "using template_create)")
                 },
                 "created_by": {
                     "type": "string",
@@ -107,7 +111,9 @@ PROJECT_TOOLS = [
 DATASET_TOOLS = [
     {
         "name": "dataset_create",
-        "description": "Create a new dataset with automatic file upload and status polling. Provide folder_path or files to upload data directly. The tool handles the complete workflow: upload files → create dataset → wait for processing → return ready dataset.",
+        "description": ("Create a new dataset with automatic file upload and status polling. "
+                        "Provide folder_path or files to upload data directly. The tool handles the "
+                        "complete workflow: upload files → create dataset → wait for processing."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -126,7 +132,8 @@ DATASET_TOOLS = [
                 },
                 "folder_path": {
                     "type": "string",
-                    "description": "Path to folder containing files to upload (optional - for creating dataset with files)"
+                    "description": ("Path to folder containing files to upload "
+                                    "(optional - for creating dataset with files)")
                 },
                 "files": {
                     "type": "array",
@@ -258,7 +265,8 @@ ANNOTATION_TOOLS = [
                             },
                             "question_type": {
                                 "type": "string",
-                                "enum": ["BoundingBox", "polygon", "polyline", "dot", "input", "radio", "boolean", "select", "dropdown", "stt", "imc"],
+                                "enum": ["BoundingBox", "polygon", "polyline", "dot", "input",
+                                         "radio", "boolean", "select", "dropdown", "stt", "imc"],
                                 "description": "Type of annotation input"
                             },
                             "required": {
