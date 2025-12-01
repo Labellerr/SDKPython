@@ -5,14 +5,18 @@ from dotenv import load_dotenv
 from labellerr.client import LabellerrClient
 from labellerr.core.projects.video_project import LabellerrProject
 
-load_dotenv()
+print(os.path.exists(r"labellerr\notebooks\dev.env"))
+load_dotenv(r"labellerr\notebooks\dev.env")
 
 API_KEY = os.getenv("QA_API_KEY")
 API_SECRET = os.getenv("QA_API_SECRET")
 CLIENT_ID = os.getenv("QA_CLIENT_ID")
+# print(API_KEY)
+# print(API_SECRET)
+# print(CLIENT_ID)
 
 PROJECT_ID = "jeanna_mixed_aphid_93841"
-VIDEO_JSON_FILE_PATH = r"C:\Users\yashs\Downloads\dumy_anotation.json"
+VIDEO_JSON_FILE_PATH = r"D:\Professional\Labellerr_SDK\dumy_anotation.json"
 
 
 def main():
@@ -23,10 +27,11 @@ def main():
 
     project = LabellerrProject(client=client, project_id=PROJECT_ID)
 
-    response = project.upload_keyframe_preannotations(
-        video_json_file_path=VIDEO_JSON_FILE_PATH
-    )
+    print(project.project_id)
 
+    response = project.upload_preannotations(
+        annotation_format="video_json", annotation_file=VIDEO_JSON_FILE_PATH
+    )
     print(response)
 
 
