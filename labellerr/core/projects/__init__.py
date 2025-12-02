@@ -10,6 +10,7 @@ from .audio_project import AudioProject as LabellerrAudioProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
 from .image_project import ImageProject as LabellerrImageProject
 from .video_project import VideoProject as LabellerrVideoProject
+from .text_project import TextProject as LabellerrTextProject
 from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List
@@ -20,6 +21,7 @@ __all__ = [
     "LabellerrDocumentProject",
     "LabellerrImageProject",
     "LabellerrVideoProject",
+    "LabellerrTextProject",
 ]
 
 
