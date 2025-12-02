@@ -1,6 +1,5 @@
 # Labellerr MCP Server (Python)
-
-A Python-based Model Context Protocol (MCP) server for the Labellerr platform. This server provides 22 specialized tools for managing annotation projects, datasets, and monitoring operations through AI assistants like Claude Desktop and Cursor.
+This server provides 22 specialized tools for managing annotation projects, datasets, and monitoring operations through AI assistants like Claude Desktop and Cursor, powered by the Labellerr SDK.
 
 > **⚡ New User?** Check out the [QUICKSTART.md](QUICKSTART.md) for a super simple 5-minute setup guide!
 
@@ -83,26 +82,24 @@ AI: *Creates export and provides download link*
 
 ## 🚀 Architecture
 
-**Pure API Implementation - SDK Independent**
+**SDK Core Implementation**
 
-This MCP server is completely independent of the Labellerr SDK implementation. It makes direct REST API calls to `https://api.labellerr.com` using only the `requests` library.
+This MCP server is built directly on top of the Labellerr SDK Core (`labellerr.core`). It exposes the SDK's capabilities through the Model Context Protocol, allowing LLMs to interact with Labellerr's robust infrastructure.
 
 ### Benefits
 
-- ✅ **No SDK Dependencies** - Immune to SDK refactors and changes
-- ✅ **Direct API Access** - Faster, more transparent operations
-- ✅ **Easy to Debug** - See exact API requests and responses
-- ✅ **Standalone Deployment** - Can be deployed without the full SDK
-- ✅ **API-First** - Tracks API changes, not SDK implementation changes
-- ✅ **Simple Dependencies** - Only requires `requests`, `mcp`, and standard library
+- ✅ **SDK Powered** - Uses the official, tested business logic from the SDK
+- ✅ **Unified Logic** - Consistent behavior between your Python scripts and AI assistant
+- ✅ **Type Safe** - Leverages Pydantic models and SDK typing
+- ✅ **Maintainable** - Updates to the SDK Core automatically benefit the MCP server
+- ✅ **Simple Dependencies** - Requires standard SDK dependencies + MCP
 
 ### Dependencies
 
 ```
-requests      # HTTP client
+labellerr-sdk # Core SDK
 mcp           # Model Context Protocol SDK
 python-dotenv # Environment variable management
-Standard library only (uuid, json, logging, asyncio)
 ```
 
 ## Features
@@ -215,7 +212,7 @@ Add to your Claude Desktop configuration file:
 
 ### Running Integration Tests
 
-The integration tests verify the complete workflow using the pure API implementation:
+The integration tests verify the complete workflow using the SDK-based implementation:
 
 ```bash
 cd /Users/sarthak/Documents/MCPLabellerr/SDKPython
@@ -230,7 +227,7 @@ The test runner will:
 5. Show detailed test results
 
 **Test Coverage:**
-- ✅ API client initialization
+- ✅ SDK client initialization
 - ✅ Dataset creation with file uploads
 - ✅ Annotation template creation
 - ✅ Project creation workflow
@@ -238,30 +235,26 @@ The test runner will:
 - ✅ Export operations
 - ✅ Complete end-to-end workflow
 
-### Direct API Client Testing
+### Direct SDK Client Testing
 
-You can also test the API client directly in Python:
+You can also test the SDK client directly in Python:
 
 ```python
-from labellerr.mcp_server.api_client import LabellerrAPIClient
+from labellerr.core import LabellerrClient
+from labellerr.core import projects as project_ops
 
 # Initialize client
-client = LabellerrAPIClient(
+client = LabellerrClient(
     api_key="your_api_key",
     api_secret="your_api_secret",
     client_id="your_client_id"
 )
 
 # List projects
-projects = client.list_projects()
-print(f"Found {len(projects['response']['projects'])} projects")
+projects = project_ops.list_projects(client)
+print(f"Found {len(list(projects))} projects")
 
-# Get dataset
-dataset = client.get_dataset("dataset_id_here")
-print(dataset)
-
-# Close client when done
-client.close()
+# Close client when done (not strictly necessary as it's stateless wrapper)
 ```
 
 ## Three-Step Project Creation Workflow
@@ -495,52 +488,43 @@ AI will:
 
 ```python
 import asyncio
-from labellerr.mcp_server.api_client import LabellerrAPIClient
+from labellerr.core import LabellerrClient, datasets as dataset_ops, annotation_templates as template_ops
 
 async def main():
     # Initialize client
-    client = LabellerrAPIClient(
+    client = LabellerrClient(
         api_key="your_api_key",
         api_secret="your_api_secret",
         client_id="your_client_id"
     )
     
-    try:
-        # Upload folder and create dataset
-        connection_id = client.upload_folder_to_connector(
-            "/path/to/images",
-            "image"
-        )
-        
-        dataset = client.create_dataset(
-            dataset_name="My Dataset",
-            data_type="image",
-            connection_id=connection_id
-        )
-        
-        print(f"Dataset created: {dataset['response']['dataset_id']}")
-        
-        # Create annotation template
-        template = client.create_annotation_template(
-            template_name="My Template",
-            data_type="image",
-            questions=[{
-                "question_number": 1,
-                "question": "Object",
-                "question_id": "uuid-here",
-                "option_type": "BoundingBox",
-                "required": True,
-                "options": [{"option_name": "#FF0000"}],
-                "color": "#FF0000"
-            }]
-        )
-        
-        print(f"Template created: {template['response']['template_id']}")
-        
-    finally:
-        client.close()
+    # Upload files (SDK utility)
+    # ... code to get files ...
+    
+    # Create dataset
+    dataset_config = schemas.DatasetConfig(
+        dataset_name="My Dataset",
+        data_type="image",
+        dataset_description="Created via SDK"
+    )
+    dataset = dataset_ops.create_dataset_from_connection(client, dataset_config, connection_id="...", source="local")
+    
+    print(f"Dataset created: {dataset.dataset_id}")
+    
+    # Create annotation template
+    questions = [
+        # ... AnnotationQuestion objects ...
+    ]
+    params = schemas.CreateTemplateParams(
+        template_name="My Template",
+        data_type="image",
+        questions=questions
+    )
+    template = template_ops.create_template(client, params)
+    
+    print(f"Template created: {template.annotation_template_id}")
 
-asyncio.run(main())
+# Run logic
 ```
 
 ## Architecture Details
@@ -548,10 +532,13 @@ asyncio.run(main())
 ```
 SDKPython/
 ├── labellerr/
+│   ├── core/                  # Core SDK Logic
+│   │   ├── projects/          # Project operations
+│   │   ├── datasets/          # Dataset operations
+│   │   └── ...
 │   ├── mcp_server/
 │   │   ├── __init__.py
-│   │   ├── server.py          # Main MCP server (Pure API)
-│   │   ├── api_client.py      # Pure API client (no SDK deps)
+│   │   ├── server.py          # Main MCP server (Uses Core SDK)
 │   │   ├── tools.py           # Tool definitions
 │   │   └── README.md          # This file
 │   └── ...
@@ -564,27 +551,18 @@ SDKPython/
 └── requirements.txt           # Dependencies
 ```
 
-### API Client Implementation
+### SDK Core Integration
 
-The `api_client.py` module provides a pure API implementation:
+The `server.py` module integrates directly with `labellerr.core`:
 
-- **Direct HTTP Calls**: Uses `requests` library directly
-- **Session Management**: Connection pooling and retry strategy
-- **Dataset Status Polling**: Automatically monitors dataset processing
-- **Error Handling**: Comprehensive error handling and logging
-- **File Uploads**: Handles GCS signed URL uploads
-- **Type Hints**: Full type annotations for better IDE support
+- **Shared Logic**: Uses the same business logic as the main SDK
+- **Dataset Status Polling**: Automatically monitors dataset processing using SDK utilities
+- **Error Handling**: Maps SDK exceptions to friendly MCP error messages
+- **Type Safety**: Uses SDK Pydantic models for data validation
 
 **Key Classes:**
-- `LabellerrAPIClient` - Main API client
-- `LabellerrAPIError` - Custom exception for API errors
-
-**API Endpoints Implemented:**
-- `/datasets/*` - Dataset operations
-- `/projects/*` - Project operations
-- `/annotations/*` - Template operations
-- `/exports/*` - Export operations
-- `/connectors/*` - File upload operations
+- `LabellerrMCPServer` - Main server class
+- `LabellerrClient` - Core SDK client (from `labellerr.core`)
 
 ## How It Works
 
@@ -617,8 +595,8 @@ The `api_client.py` module provides a pure API implementation:
                    │ Uses
                    ▼
 ┌─────────────────────────────────────────────────────────────┐
-│           api_client.py (HTTP Client)                      │
-│  • Makes HTTP requests to Labellerr API                    │
+│           labellerr.core (SDK Logic)                       │
+│  • Validates parameters                                    │
 │  • Handles authentication                                  │
 │  • Polls dataset status until ready                        │
 │  • Manages retries & errors                                │
@@ -665,12 +643,7 @@ The `api_client.py` module provides a pure API implementation:
    - Get fresh API Key, API Secret, and Client ID
 2. Check credentials in config file (not `.env`!)
 3. Make sure there are no extra spaces or quotes in credentials
-4. Test credentials with a simple API call:
-   ```python
-   from labellerr.mcp_server.api_client import LabellerrAPIClient
-   client = LabellerrAPIClient(api_key="...", api_secret="...", client_id="...")
-   print(client.list_projects())
-   ```
+4. Test credentials with a simple SDK call.
 
 ### ❌ "File upload fails"
 
@@ -716,7 +689,7 @@ The `api_client.py` module provides a pure API implementation:
 **Solutions:**
 1. Wait a few minutes before retrying
 2. Reduce frequency of requests
-3. The API client has automatic retry built-in
+3. The SDK client has automatic retry built-in
 4. Contact support if limits are too restrictive
 
 ### 🐛 Enable Debug Logging
@@ -740,10 +713,7 @@ If you're still having issues, enable detailed logging:
 ## Frequently Asked Questions (FAQ)
 
 ### Q: Do I need to install the full Labellerr SDK?
-**A:** No! This MCP server is completely independent. It only needs `requests`, `mcp`, and standard Python libraries. Just run:
-```bash
-pip install -r requirements.txt
-```
+**A:** Yes, the MCP server is part of the SDK package. Just install the requirements.
 
 ### Q: Can I use this with multiple AI assistants?
 **A:** Yes! You can configure it in both Cursor and Claude Desktop (or any MCP-compatible client). Just add the configuration to each one.
@@ -759,12 +729,7 @@ pip install -r requirements.txt
 And the config file location is `%APPDATA%\Cursor\mcp.json`
 
 ### Q: Can I use this server from regular Python code (not just AI assistants)?
-**A:** Yes! You can import and use `api_client.py` directly:
-```python
-from labellerr.mcp_server.api_client import LabellerrAPIClient
-client = LabellerrAPIClient(api_key="...", api_secret="...", client_id="...")
-projects = client.list_projects()
-```
+**A:** You should use the `labellerr.core` SDK modules directly for Python code, which gives you better control and type safety than calling the MCP server.
 
 ### Q: What happens if my API credentials change?
 **A:** Update your AI assistant's MCP configuration file with new credentials and restart the assistant.
@@ -799,112 +764,10 @@ Then restart your AI assistant.
 ### Q: How do I report bugs or request features?
 **A:** Open an issue in the repository or contact Labellerr support at support@labellerr.com
 
-## Development
-
-### Three-Step Architecture
-
-The MCP server follows the SDK's three-step workflow for project creation:
-1. **Dataset Creation**: Upload files, create dataset, poll status until ready
-2. **Template Creation**: Define annotation questions and create template
-3. **Project Creation**: Link dataset and template with rotation config
-
-This architecture ensures datasets are fully processed before being used in projects.
-
-### Adding New Tools
-
-1. Define the tool schema in `tools.py`:
-```python
-{
-    "name": "new_tool_name",
-    "description": "What the tool does",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "param1": {
-                "type": "string",
-                "description": "Parameter description"
-            }
-        },
-        "required": ["param1"]
-    }
-}
-```
-
-2. Add API method to `api_client.py`:
-```python
-def new_api_method(self, param1: str) -> Dict[str, Any]:
-    """API method description"""
-    url = f"{self.BASE_URL}/endpoint"
-    return self._make_request("POST", url, json={"param1": param1})
-```
-
-3. Implement handler in `server.py`:
-```python
-async def _handle_category_tool(self, name: str, args: dict) -> dict:
-    if name == "new_tool_name":
-        result = await asyncio.to_thread(
-            self.api_client.new_api_method,
-            args["param1"]
-        )
-        return result
-```
-
-4. Add tests to `test_mcp_server.py`
-
-### Running Tests During Development
-
-```bash
-# Run all tests
-pytest tests/integration/test_mcp_server.py -v
-
-# Run specific test class
-pytest tests/integration/test_mcp_server.py::TestDatasetOperations -v
-
-# Run specific test
-pytest tests/integration/test_mcp_server.py::TestDatasetOperations::test_create_dataset_with_folder -v
-
-# Run with detailed output
-pytest tests/integration/test_mcp_server.py -v -s
-```
-
-## API Reference
-
-### LabellerrAPIClient Methods
-
-**Dataset Operations:**
-- `create_dataset(dataset_name, data_type, ...)` - Create a dataset
-- `get_dataset(dataset_id)` - Get dataset details
-- `list_datasets(data_type, scope)` - List datasets
-- `delete_dataset(dataset_id)` - Delete a dataset
-- `upload_files_to_connector(file_paths)` - Upload files
-- `upload_folder_to_connector(folder_path, data_type)` - Upload folder
-
-**Template Operations:**
-- `create_annotation_template(template_name, data_type, questions)` - Create template
-- `get_annotation_template(template_id)` - Get template details
-
-**Project Operations:**
-- `create_project(project_name, data_type, attached_datasets, ...)` - Create project
-- `get_project(project_id)` - Get project details
-- `list_projects()` - List all projects
-- `update_project_rotations(project_id, rotations)` - Update rotations
-
-**Export Operations:**
-- `create_export(project_id, export_name, ...)` - Create export
-- `check_export_status(project_id, report_ids)` - Check export status
-- `get_export_download_url(project_id, export_id)` - Get download URL
-
-## Resources
-
-- **Labellerr Documentation:** [docs.labellerr.com](https://docs.labellerr.com)
-- **Labellerr API:** [api.labellerr.com](https://api.labellerr.com)
-- **MCP Protocol:** [modelcontextprotocol.io](https://modelcontextprotocol.io)
-- **Support Email:** support@labellerr.com
-
 ## License
 
 MIT License - see LICENSE file for details.
 
 ---
 
-**Pure API Implementation** - Independent of SDK Changes • Built with ❤️ for the Labellerr community
+**SDK Core Implementation** - Powerful, Type-Safe, and Maintainable • Built with ❤️ for the Labellerr community

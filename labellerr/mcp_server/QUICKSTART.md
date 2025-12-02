@@ -170,6 +170,3 @@ python3 --version
 **Questions?** Check the [FAQ](README.md#frequently-asked-questions-faq) or the full [README](README.md)
 
 **Happy annotating! 🎯**
-
-
-
