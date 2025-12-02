@@ -30,3 +30,12 @@ download
 labellerr/__pycache__/
 env.*
 claude.md
+labellerr/notebooks/Labellerr_datasets/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c.mp4
+labellerr/notebooks/Labellerr_datasets/354681d3-034a-4d66-b070-365f4bd11d8a/7db3f60c-f6e5-4d3d-a63b-cb38530ee265.mp4
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c_mapping.json
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c/frames/316.jpg
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/7db3f60c-f6e5-4d3d-a63b-cb38530ee265/7db3f60c-f6e5-4d3d-a63b-cb38530ee265_mapping.json
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c/frames/1406.jpg
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c/frames/1064.jpg
+labellerr/notebooks/PyScene_detects/354681d3-034a-4d66-b070-365f4bd11d8a/2a8d96ca-9161-4dee-ad3b-a5faf301bc6c/frames/760.jpg
+labellerr/notebooks/dev.env

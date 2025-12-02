@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from labellerr.client import LabellerrClient
 from labellerr.core.projects.video_project import LabellerrProject
 
-print(os.path.exists(r"labellerr\notebooks\dev.env"))
+# Load environment variables from .env file
 load_dotenv(r"labellerr\notebooks\dev.env")
 
 API_KEY = os.getenv("QA_API_KEY")
