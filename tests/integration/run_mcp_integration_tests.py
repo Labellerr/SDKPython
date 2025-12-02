@@ -138,28 +138,24 @@ def validate_credentials():
     print("\nTesting API connection...")
 
     try:
-        # Import here to avoid issues if module not found
+        # Import SDK client
         sys.path.insert(0, str(get_project_root()))
-        from labellerr.mcp_server.api_client import LabellerrAPIClient
+        from labellerr.core import LabellerrClient
+        from labellerr.core import projects as project_ops
 
-        client = LabellerrAPIClient(
+        client = LabellerrClient(
             api_key=os.getenv('API_KEY'),
             api_secret=os.getenv('API_SECRET'),
             client_id=os.getenv('CLIENT_ID')
         )
 
         # Try to list projects as validation
-        result = client.list_projects()
+        projects = project_ops.list_projects(client)
 
-        if result and "response" in result:
-            print("✓ API connection successful")
-            print(f"✓ Found {len(result.get('response', {}).get('projects', []))} projects")
-            client.close()
-            return True
-        else:
-            print("❌ API returned unexpected response")
-            client.close()
-            return False
+        print("✓ API connection successful")
+        print(f"✓ Found {len(projects)} projects")
+        client.close()
+        return True
 
     except Exception as e:
         print(f"❌ Credential validation failed: {e}")

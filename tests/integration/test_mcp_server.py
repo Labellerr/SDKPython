@@ -1,7 +1,7 @@
 """
 Integration tests for the Labellerr MCP Server
 
-These tests verify the complete workflow using the pure API implementation:
+These tests verify the complete workflow using the SDK core implementation:
 1. Dataset creation with file uploads
 2. Annotation template creation
 3. Project creation linking dataset and template
@@ -18,14 +18,31 @@ from dotenv import load_dotenv
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
-# Skip entire module if mcp dependencies are not installed
+# Skip entire module if SDK core dependencies are not installed
 try:
-    from labellerr.mcp_server.api_client import LabellerrAPIClient
-    MCP_AVAILABLE = True
+    from labellerr.core import LabellerrClient
+    from labellerr.core import datasets as dataset_ops
+    from labellerr.core import projects as project_ops
+    from labellerr.core import annotation_templates as template_ops
+    from labellerr.core.datasets import LabellerrDataset
+    from labellerr.core.datasets.base import LabellerrDatasetMeta
+    from labellerr.core.datasets.utils import upload_files, upload_folder_files_to_dataset
+    from labellerr.core.projects import LabellerrProject
+    from labellerr.core.projects.base import LabellerrProjectMeta
+    from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
+    from labellerr.core import schemas
+    from labellerr.core.schemas.annotation_templates import (
+        CreateTemplateParams,
+        AnnotationQuestion,
+        QuestionType,
+        Option,
+    )
+    from labellerr.core import constants
+    SDK_AVAILABLE = True
 except ImportError as e:
-    MCP_AVAILABLE = False
+    SDK_AVAILABLE = False
     pytest.skip(
-        f"MCP server dependencies not installed: {e}. Install with: pip install -e '.[mcp]'",
+        f"SDK core dependencies not installed: {e}. Install with: pip install -e '.[dev]'",
         allow_module_level=True
     )
 
@@ -53,9 +70,9 @@ def credentials():
 
 
 @pytest.fixture(scope="session")
-def api_client(credentials):
-    """Create API client instance"""
-    client = LabellerrAPIClient(
+def sdk_client(credentials):
+    """Create SDK client instance"""
+    client = LabellerrClient(
         api_key=credentials['api_key'],
         api_secret=credentials['api_secret'],
         client_id=credentials['client_id']
@@ -68,7 +85,7 @@ def api_client(credentials):
 
 
 @pytest.fixture(scope="session")
-def test_dataset_id(api_client, credentials):
+def test_dataset_id(sdk_client, credentials):
     """Create a test dataset and return its ID"""
     test_data_path = credentials.get('test_data_path')
 
@@ -76,103 +93,124 @@ def test_dataset_id(api_client, credentials):
         pytest.skip("Test data path not provided or does not exist")
 
     # Upload files and create dataset
-    connection_id = api_client.upload_folder_to_connector(test_data_path, "image")
+    upload_result = upload_folder_files_to_dataset(
+        sdk_client,
+        {
+            "client_id": credentials['client_id'],
+            "folder_path": test_data_path,
+            "data_type": "image"
+        }
+    )
+    connection_id = upload_result.get("connection_id")
 
-    dataset_name = f"MCP Test Dataset {uuid.uuid4().hex[:8]}"
-    result = api_client.create_dataset(
-        dataset_name=dataset_name,
+    dataset_config = schemas.DatasetConfig(
+        dataset_name=f"MCP Test Dataset {uuid.uuid4().hex[:8]}",
         data_type="image",
-        dataset_description="Created by MCP integration tests",
-        connection_id=connection_id
+        dataset_description="Created by MCP integration tests"
     )
 
-    dataset_id = result["response"]["dataset_id"]
+    dataset = dataset_ops.create_dataset_from_connection(
+        sdk_client,
+        dataset_config,
+        connection_id,
+        "local"
+    )
+
+    dataset_id = dataset.dataset_id
 
     yield dataset_id
 
     # Cleanup - delete dataset after tests
     try:
-        api_client.delete_dataset(dataset_id)
+        dataset_ops.delete_dataset(sdk_client, dataset_id)
     except Exception as e:
         print(f"Warning: Failed to cleanup dataset {dataset_id}: {e}")
 
 
 @pytest.fixture(scope="session")
-def test_template_id(api_client):
+def test_template_id(sdk_client):
     """Create a test annotation template and return its ID"""
     template_name = f"MCP Test Template {uuid.uuid4().hex[:8]}"
 
     questions = [
-        {
-            "question_number": 1,
-            "question": "Object",
-            "question_id": str(uuid.uuid4()),
-            "option_type": "BoundingBox",
-            "required": True,
-            "options": [{"option_name": "#FF0000"}],
-            "color": "#FF0000"
-        }
+        AnnotationQuestion(
+            question_number=1,
+            question="Object",
+            question_id=str(uuid.uuid4()),
+            question_type=QuestionType.bounding_box,
+            required=True,
+            options=[Option(option_name="#FF0000")],
+            color="#FF0000"
+        )
     ]
 
-    result = api_client.create_annotation_template(
+    params = CreateTemplateParams(
         template_name=template_name,
         data_type="image",
         questions=questions
     )
 
-    template_id = result["response"]["template_id"]
-    return template_id
+    template = template_ops.create_template(sdk_client, params)
+    return template.annotation_template_id
 
 
 @pytest.fixture(scope="session")
-def test_project_id(api_client, test_dataset_id, test_template_id):
+def test_project_id(sdk_client, test_dataset_id, test_template_id):
     """Create a test project and return its ID"""
     project_name = f"MCP Test Project {uuid.uuid4().hex[:8]}"
 
-    rotations = {
-        "annotation_rotation_count": 1,
-        "review_rotation_count": 1,
-        "client_review_rotation_count": 1
-    }
+    rotations = schemas.RotationConfig(
+        annotation_rotation_count=1,
+        review_rotation_count=1,
+        client_review_rotation_count=1
+    )
 
-    result = api_client.create_project(
+    params = schemas.CreateProjectParams(
         project_name=project_name,
         data_type="image",
-        attached_datasets=[test_dataset_id],
-        annotation_template_id=test_template_id,
         rotations=rotations,
         use_ai=False,
         created_by=None
     )
 
-    project_id = result["response"]["project_id"]
-    return project_id
+    # Get dataset and template objects
+    dataset = LabellerrDataset(sdk_client, test_dataset_id)
+    template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
+
+    project = project_ops.create_project(
+        sdk_client,
+        params,
+        [dataset],
+        template
+    )
+
+    return project.project_id
 
 
 # =============================================================================
 # Test Cases
 # =============================================================================
 
-class TestAPIClientInitialization:
-    """Test API client initialization"""
+class TestSDKClientInitialization:
+    """Test SDK client initialization"""
 
-    def test_client_initialization(self, api_client):
-        """Test that API client initializes successfully"""
-        assert api_client is not None
-        assert api_client.api_key is not None
-        assert api_client.api_secret is not None
-        assert api_client.client_id is not None
-        assert api_client.BASE_URL == "https://api.labellerr.com"
+    def test_client_initialization(self, sdk_client):
+        """Test that SDK client initializes successfully"""
+        assert sdk_client is not None
+        assert sdk_client.api_key is not None
+        assert sdk_client.api_secret is not None
+        assert sdk_client.client_id is not None
+        assert sdk_client.base_url == constants.BASE_URL
 
-    def test_client_session(self, api_client):
+    def test_client_session(self, sdk_client):
         """Test that session is configured"""
-        assert api_client.session is not None
+        assert sdk_client._session is not None
 
 
 class TestDatasetOperations:
-    """Test dataset-related API operations"""
+    """Test dataset-related SDK operations"""
 
-    def test_create_dataset_with_folder(self, api_client, credentials):
+    def test_create_dataset_with_folder(self, sdk_client, credentials):
         """Test creating a dataset by uploading a folder"""
         test_data_path = credentials.get('test_data_path')
 
@@ -180,172 +218,195 @@ class TestDatasetOperations:
             pytest.skip("Test data path not provided")
 
         # Upload folder
-        connection_id = api_client.upload_folder_to_connector(test_data_path, "image")
+        upload_result = upload_folder_files_to_dataset(
+            sdk_client,
+            {
+                "client_id": credentials['client_id'],
+                "folder_path": test_data_path,
+                "data_type": "image"
+            }
+        )
+        connection_id = upload_result.get("connection_id")
         assert connection_id is not None
 
         # Create dataset
-        dataset_name = f"Test Dataset {uuid.uuid4().hex[:8]}"
-        result = api_client.create_dataset(
-            dataset_name=dataset_name,
-            data_type="image",
-            connection_id=connection_id
+        dataset_config = schemas.DatasetConfig(
+            dataset_name=f"Test Dataset {uuid.uuid4().hex[:8]}",
+            data_type="image"
         )
 
-        assert "response" in result
-        assert "dataset_id" in result["response"]
+        dataset = dataset_ops.create_dataset_from_connection(
+            sdk_client,
+            dataset_config,
+            connection_id,
+            "local"
+        )
 
-        dataset_id = result["response"]["dataset_id"]
+        assert dataset.dataset_id is not None
 
         # Cleanup
-        api_client.delete_dataset(dataset_id)
+        dataset_ops.delete_dataset(sdk_client, dataset.dataset_id)
 
-    def test_get_dataset(self, api_client, test_dataset_id):
+    def test_get_dataset(self, sdk_client, test_dataset_id):
         """Test getting dataset details"""
-        result = api_client.get_dataset(test_dataset_id)
+        dataset_data = LabellerrDatasetMeta.get_dataset(sdk_client, test_dataset_id)
 
-        assert "response" in result
-        assert result["response"]["dataset_id"] == test_dataset_id
-        assert "name" in result["response"]
-        assert "data_type" in result["response"]
+        assert dataset_data is not None
+        assert dataset_data.get("dataset_id") == test_dataset_id
+        assert "name" in dataset_data
+        assert "data_type" in dataset_data
 
-    def test_list_datasets(self, api_client):
+    def test_list_datasets(self, sdk_client):
         """Test listing datasets"""
-        result = api_client.list_datasets(data_type="image", scope="client")
+        datasets = list(dataset_ops.list_datasets(
+            sdk_client,
+            "image",
+            schemas.DataSetScope.client,
+            page_size=10
+        ))
 
-        assert "response" in result
-        assert "datasets" in result["response"]
-        assert isinstance(result["response"]["datasets"], list)
+        assert isinstance(datasets, list)
 
 
 class TestAnnotationTemplateOperations:
-    """Test annotation template-related API operations"""
+    """Test annotation template-related SDK operations"""
 
-    def test_create_annotation_template(self, api_client):
+    def test_create_annotation_template(self, sdk_client):
         """Test creating an annotation template"""
         template_name = f"Test Template {uuid.uuid4().hex[:8]}"
 
         questions = [
-            {
-                "question_number": 1,
-                "question": "Object Detection",
-                "question_id": str(uuid.uuid4()),
-                "option_type": "BoundingBox",
-                "required": True,
-                "options": [{"option_name": "#00FF00"}],
-                "color": "#00FF00"
-            }
+            AnnotationQuestion(
+                question_number=1,
+                question="Object Detection",
+                question_id=str(uuid.uuid4()),
+                question_type=QuestionType.bounding_box,
+                required=True,
+                options=[Option(option_name="#00FF00")],
+                color="#00FF00"
+            )
         ]
 
-        result = api_client.create_annotation_template(
+        params = CreateTemplateParams(
             template_name=template_name,
             data_type="image",
             questions=questions
         )
 
-        assert "response" in result
-        assert "template_id" in result["response"]
+        template = template_ops.create_template(sdk_client, params)
 
-    def test_get_annotation_template(self, api_client, test_template_id):
+        assert template.annotation_template_id is not None
+
+    def test_get_annotation_template(self, sdk_client, test_template_id):
         """Test getting annotation template details"""
-        result = api_client.get_annotation_template(test_template_id)
+        template_data = LabellerrAnnotationTemplate.get_annotation_template(
+            sdk_client, test_template_id
+        )
 
-        assert "response" in result or "template" in result  # API may return different structure
+        assert template_data is not None
 
 
 class TestProjectOperations:
-    """Test project-related API operations"""
+    """Test project-related SDK operations"""
 
-    def test_create_project(self, api_client, test_dataset_id, test_template_id):
+    def test_create_project(self, sdk_client, test_dataset_id, test_template_id):
         """Test creating a project"""
         project_name = f"Test Project {uuid.uuid4().hex[:8]}"
 
-        rotations = {
-            "annotation_rotation_count": 1,
-            "review_rotation_count": 1,
-            "client_review_rotation_count": 1
-        }
+        rotations = schemas.RotationConfig(
+            annotation_rotation_count=1,
+            review_rotation_count=1,
+            client_review_rotation_count=1
+        )
 
-        result = api_client.create_project(
+        params = schemas.CreateProjectParams(
             project_name=project_name,
             data_type="image",
-            attached_datasets=[test_dataset_id],
-            annotation_template_id=test_template_id,
             rotations=rotations
         )
 
-        assert "response" in result
-        assert "project_id" in result["response"]
+        dataset = LabellerrDataset(sdk_client, test_dataset_id)
+        template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
 
-    def test_get_project(self, api_client, test_project_id):
+        project = project_ops.create_project(
+            sdk_client,
+            params,
+            [dataset],
+            template
+        )
+
+        assert project.project_id is not None
+
+    def test_get_project(self, sdk_client, test_project_id):
         """Test getting project details"""
-        result = api_client.get_project(test_project_id)
+        project_data = LabellerrProjectMeta.get_project(sdk_client, test_project_id)
 
-        assert "response" in result
-        assert result["response"]["project_id"] == test_project_id
-        assert "project_name" in result["response"]
-        assert "data_type" in result["response"]
+        assert project_data is not None
+        assert project_data.get("project_id") == test_project_id
+        assert "project_name" in project_data
+        assert "data_type" in project_data
 
-    def test_list_projects(self, api_client):
+    def test_list_projects(self, sdk_client):
         """Test listing projects"""
-        result = api_client.list_projects()
+        projects = project_ops.list_projects(sdk_client)
 
-        assert "response" in result
-        assert "projects" in result["response"]
-        assert isinstance(result["response"]["projects"], list)
+        assert isinstance(projects, list)
 
-    def test_list_projects_contains_test_project(self, api_client, test_project_id):
+    def test_list_projects_contains_test_project(self, sdk_client, test_project_id):
         """Test that our test project appears in the list"""
-        result = api_client.list_projects()
+        projects = project_ops.list_projects(sdk_client)
 
-        project_ids = [p["project_id"] for p in result["response"]["projects"]]
+        project_ids = [p.project_id for p in projects]
         assert test_project_id in project_ids
 
 
 class TestExportOperations:
-    """Test export-related API operations"""
+    """Test export-related SDK operations"""
 
-    def test_create_export(self, api_client, test_project_id):
+    def test_create_export(self, sdk_client, test_project_id):
         """Test creating an export"""
-        result = api_client.create_export(
-            project_id=test_project_id,
+        project = LabellerrProject(sdk_client, test_project_id)
+
+        export_config = schemas.CreateExportParams(
             export_name=f"Test Export {uuid.uuid4().hex[:8]}",
             export_description="Created by integration tests",
             export_format="json",
-            statuses=["accepted"]
+            statuses=["accepted"],
+            export_destination=schemas.ExportDestination.LOCAL
         )
 
-        assert "response" in result
-        # Export may return report_id or job_id
-        assert "report_id" in result["response"] or "job_id" in result["response"]
+        export = project.create_export(export_config)
 
-    def test_check_export_status(self, api_client, test_project_id):
+        assert export.report_id is not None
+
+    def test_check_export_status(self, sdk_client, test_project_id):
         """Test checking export status"""
+        project = LabellerrProject(sdk_client, test_project_id)
+
         # First create an export
-        export_result = api_client.create_export(
-            project_id=test_project_id,
+        export_config = schemas.CreateExportParams(
             export_name=f"Test Export Status {uuid.uuid4().hex[:8]}",
             export_description="Testing status check",
             export_format="json",
-            statuses=["accepted"]
+            statuses=["accepted"],
+            export_destination=schemas.ExportDestination.LOCAL
         )
 
-        report_id = export_result["response"].get("report_id")
-        if not report_id:
+        export = project.create_export(export_config)
+
+        if not export.report_id:
             pytest.skip("Export did not return report_id")
 
         # Check status
-        result = api_client.check_export_status(
-            project_id=test_project_id,
-            report_ids=[report_id]
-        )
+        result = project.check_export_status([export.report_id])
 
-        assert "status" in result or "response" in result
+        assert result is not None
 
 
 class TestCompleteWorkflow:
     """Test the complete end-to-end workflow"""
 
-    def test_full_workflow(self, api_client, credentials):
+    def test_full_workflow(self, sdk_client, credentials):
         """Test creating dataset -> template -> project"""
         test_data_path = credentials.get('test_data_path')
 
@@ -353,56 +414,84 @@ class TestCompleteWorkflow:
             pytest.skip("Test data path not provided")
 
         # Step 1: Create dataset
-        connection_id = api_client.upload_folder_to_connector(test_data_path, "image")
-        dataset_result = api_client.create_dataset(
-            dataset_name=f"Workflow Test Dataset {uuid.uuid4().hex[:8]}",
-            data_type="image",
-            connection_id=connection_id
-        )
-        dataset_id = dataset_result["response"]["dataset_id"]
-
-        # Step 2: Create template
-        template_result = api_client.create_annotation_template(
-            template_name=f"Workflow Test Template {uuid.uuid4().hex[:8]}",
-            data_type="image",
-            questions=[{
-                "question_number": 1,
-                "question": "Label",
-                "question_id": str(uuid.uuid4()),
-                "option_type": "BoundingBox",
-                "required": True,
-                "options": [{"option_name": "#FF00FF"}],
-                "color": "#FF00FF"
-            }]
-        )
-        template_id = template_result["response"]["template_id"]
-
-        # Step 3: Create project
-        project_result = api_client.create_project(
-            project_name=f"Workflow Test Project {uuid.uuid4().hex[:8]}",
-            data_type="image",
-            attached_datasets=[dataset_id],
-            annotation_template_id=template_id,
-            rotations={
-                "annotation_rotation_count": 1,
-                "review_rotation_count": 1,
-                "client_review_rotation_count": 1
+        upload_result = upload_folder_files_to_dataset(
+            sdk_client,
+            {
+                "client_id": credentials['client_id'],
+                "folder_path": test_data_path,
+                "data_type": "image"
             }
         )
-        project_id = project_result["response"]["project_id"]
+        connection_id = upload_result.get("connection_id")
+
+        dataset_config = schemas.DatasetConfig(
+            dataset_name=f"Workflow Test Dataset {uuid.uuid4().hex[:8]}",
+            data_type="image"
+        )
+
+        dataset = dataset_ops.create_dataset_from_connection(
+            sdk_client,
+            dataset_config,
+            connection_id,
+            "local"
+        )
+        dataset_id = dataset.dataset_id
+
+        # Step 2: Create template
+        questions = [
+            AnnotationQuestion(
+                question_number=1,
+                question="Label",
+                question_id=str(uuid.uuid4()),
+                question_type=QuestionType.bounding_box,
+                required=True,
+                options=[Option(option_name="#FF00FF")],
+                color="#FF00FF"
+            )
+        ]
+
+        template_params = CreateTemplateParams(
+            template_name=f"Workflow Test Template {uuid.uuid4().hex[:8]}",
+            data_type="image",
+            questions=questions
+        )
+
+        template = template_ops.create_template(sdk_client, template_params)
+        template_id = template.annotation_template_id
+
+        # Step 3: Create project
+        rotations = schemas.RotationConfig(
+            annotation_rotation_count=1,
+            review_rotation_count=1,
+            client_review_rotation_count=1
+        )
+
+        project_params = schemas.CreateProjectParams(
+            project_name=f"Workflow Test Project {uuid.uuid4().hex[:8]}",
+            data_type="image",
+            rotations=rotations
+        )
+
+        project = project_ops.create_project(
+            sdk_client,
+            project_params,
+            [dataset],
+            template
+        )
+        project_id = project.project_id
 
         # Step 4: Verify project was created
-        project_details = api_client.get_project(project_id)
-        assert project_details["response"]["project_id"] == project_id
+        project_data = LabellerrProjectMeta.get_project(sdk_client, project_id)
+        assert project_data.get("project_id") == project_id
 
         # Step 5: Verify project appears in list
-        projects_list = api_client.list_projects()
-        project_ids = [p["project_id"] for p in projects_list["response"]["projects"]]
+        projects = project_ops.list_projects(sdk_client)
+        project_ids = [p.project_id for p in projects]
         assert project_id in project_ids
 
         # Cleanup
         try:
-            api_client.delete_dataset(dataset_id)
+            dataset_ops.delete_dataset(sdk_client, dataset_id)
         except Exception as e:
             print(f"Warning: Failed to cleanup dataset: {e}")
 

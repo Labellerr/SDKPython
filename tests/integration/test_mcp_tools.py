@@ -49,7 +49,7 @@ def credentials():
 @pytest.fixture(scope="session")
 def mcp_server(credentials):
     """Create MCP server instance"""
-    # Set both env var formats for compatibility with MCP server code
+    # Set env vars for MCP server code
     os.environ['LABELLERR_API_KEY'] = credentials['api_key']
     os.environ['LABELLERR_API_SECRET'] = credentials['api_secret']
     os.environ['LABELLERR_CLIENT_ID'] = credentials['client_id']
@@ -58,7 +58,8 @@ def mcp_server(credentials):
     yield server
 
     # Cleanup
-    server.api_client.close()
+    if server.client:
+        server.client.close()
 
 
 @pytest.fixture(scope="session")
