@@ -56,11 +56,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tensormatics/SDKPython"
-Documentation = "https://github.com/tensormatics/SDKPython#readme"
-Repository = "https://github.com/tensormatics/SDKPython"
-"Bug Tracker" = "https://github.com/tensormatics/SDKPython/issues"
-Changelog = "https://github.com/tensormatics/SDKPython/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Labellerr/SDKPython"
+Documentation = "https://github.com/Labellerr/SDKPython#readme"
+Repository = "https://github.com/Labellerr/SDKPython"
+"Bug Tracker" = "https://github.com/Labellerr/SDKPython/issues"
+Changelog = "https://github.com/Labellerr/SDKPython/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["labellerr*"]

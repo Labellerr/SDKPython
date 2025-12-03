@@ -39,7 +39,7 @@ This documentation will guide you through installing the SDK, understanding its 
 To install the Labellerr SDK, use the following command:
 
 ```bash
-pip install https://github.com/tensormatics/SDKPython/releases/download/prod/labellerr_sdk-1.0.0.tar.gz
+pip install https://github.com/Labellerr/SDKPython/releases/download/prod/labellerr_sdk-1.0.0.tar.gz
 ```
 
 ---
