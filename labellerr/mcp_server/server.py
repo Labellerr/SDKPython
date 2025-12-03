@@ -738,7 +738,7 @@ class LabellerrMCPServer:
                     LabellerrProject, self.client, args["project_id"]
                 )
 
-                future = await asyncio.to_thread(
+                await asyncio.to_thread(
                     project.upload_preannotations,
                     args["annotation_format"],
                     args["annotation_file"],

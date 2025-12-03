@@ -26,7 +26,7 @@ try:
     from labellerr.core import annotation_templates as template_ops
     from labellerr.core.datasets import LabellerrDataset
     from labellerr.core.datasets.base import LabellerrDatasetMeta
-    from labellerr.core.datasets.utils import upload_files, upload_folder_files_to_dataset
+    from labellerr.core.datasets.utils import upload_folder_files_to_dataset
     from labellerr.core.projects import LabellerrProject
     from labellerr.core.projects.base import LabellerrProjectMeta
     from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
@@ -457,7 +457,6 @@ class TestCompleteWorkflow:
         )
 
         template = template_ops.create_template(sdk_client, template_params)
-        template_id = template.annotation_template_id
 
         # Step 3: Create project
         rotations = schemas.RotationConfig(
