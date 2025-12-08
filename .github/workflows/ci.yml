@@ -19,6 +19,7 @@ jobs:
       AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
       GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
       GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
+      LABELLERR_TEST_DATA_PATH: ${{ github.workspace }}/tests/fixtures/mcp_images
 
     steps:
       - name: Checkout
@@ -32,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,mcp]"
 
       - name: Run linting
         run: |

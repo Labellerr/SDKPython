@@ -49,6 +49,12 @@ dev = [
     "python-dotenv>=1.0.0",
     "build>=0.3.0",
 ]
+mcp = [
+    "mcp>=1.0.0",
+    "anthropic>=0.18.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+]
 docs = [
     "sphinx>=4.0.0",
     "sphinx-rtd-theme>=0.5.0",
