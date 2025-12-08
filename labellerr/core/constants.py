@@ -7,7 +7,7 @@ FILE_BATCH_COUNT = 900
 TOTAL_FILES_SIZE_LIMIT_PER_DATASET = 2.5 * 1024 * 1024 * 1024  # 2.5GB
 TOTAL_FILES_COUNT_LIMIT_PER_DATASET = 2500
 
-ANNOTATION_FORMAT = ["json", "coco_json", "csv", "png"]
+ANNOTATION_FORMAT = ["json", "coco_json", "csv", "png", "video_json"]
 LOCAL_EXPORT_FORMAT = ["json", "coco_json", "csv", "png"]
 LOCAL_EXPORT_STATUS = [
     "review",
