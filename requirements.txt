@@ -5,3 +5,7 @@ pytest
 pydantic>=2.0.0
 aiofiles
 aiohttp
+mcp
+anthropic
+fastapi
+uvicorn[standard]

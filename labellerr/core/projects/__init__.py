@@ -1,6 +1,8 @@
 import json
 import uuid
 
+import requests
+import requests
 from labellerr import LabellerrClient
 
 from .. import client_utils, constants, schemas
@@ -10,9 +12,12 @@ from .audio_project import AudioProject as LabellerrAudioProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
 from .image_project import ImageProject as LabellerrImageProject
 from .video_project import VideoProject as LabellerrVideoProject
+from .text_project import TextProject as LabellerrTextProject
 from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 __all__ = [
     "LabellerrProject",
@@ -20,6 +25,7 @@ __all__ = [
     "LabellerrDocumentProject",
     "LabellerrImageProject",
     "LabellerrVideoProject",
+    "LabellerrTextProject",
 ]
 
 
@@ -89,7 +95,21 @@ def list_projects(client: "LabellerrClient"):
         extra_headers={"content-type": "application/json"},
         request_id=unique_id,
     )
-    return [
-        LabellerrProject(client, project_id=project["project_id"])
-        for project in response["response"]["projects"]
-    ]
+
+    def _instantiate_project(project_data):
+        try:
+            project = LabellerrProject(client, project_id=project_data["project_id"])
+            return project
+        except requests.exceptions.RetryError:  # Handling Dangling projects
+            return None
+        except LabellerrError:  # Handling Non-migrated projects
+            return None
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        projects = [
+            p
+            for p in executor.map(_instantiate_project, response["response"])
+            if p is not None
+        ]
+
+    return projects
