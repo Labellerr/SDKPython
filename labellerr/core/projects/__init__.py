@@ -2,7 +2,6 @@ import json
 import uuid
 
 import requests
-import requests
 from labellerr import LabellerrClient
 
 from .. import client_utils, constants, schemas
@@ -16,7 +15,6 @@ from .text_project import TextProject as LabellerrTextProject
 from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List
-from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ThreadPoolExecutor
 
 __all__ = [

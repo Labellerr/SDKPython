@@ -38,12 +38,13 @@ try:
         Option,
     )
     from labellerr.core import constants
+
     SDK_AVAILABLE = True
 except ImportError as e:
     SDK_AVAILABLE = False
     pytest.skip(
         f"SDK core dependencies not installed: {e}. Install with: pip install -e '.[dev]'",
-        allow_module_level=True
+        allow_module_level=True,
     )
 
 # Load environment variables
@@ -53,19 +54,21 @@ load_dotenv()
 @pytest.fixture(scope="session")
 def credentials():
     """Load API credentials from environment"""
-    api_key = os.getenv('API_KEY')
-    api_secret = os.getenv('API_SECRET')
-    client_id = os.getenv('CLIENT_ID')
-    test_data_path = os.getenv('LABELLERR_TEST_DATA_PATH')
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
+    test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
     if not all([api_key, api_secret, client_id]):
-        pytest.skip("Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)")
+        pytest.skip(
+            "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
+        )
 
     return {
-        'api_key': api_key,
-        'api_secret': api_secret,
-        'client_id': client_id,
-        'test_data_path': test_data_path
+        "api_key": api_key,
+        "api_secret": api_secret,
+        "client_id": client_id,
+        "test_data_path": test_data_path,
     }
 
 
@@ -73,9 +76,9 @@ def credentials():
 def sdk_client(credentials):
     """Create SDK client instance"""
     client = LabellerrClient(
-        api_key=credentials['api_key'],
-        api_secret=credentials['api_secret'],
-        client_id=credentials['client_id']
+        api_key=credentials["api_key"],
+        api_secret=credentials["api_secret"],
+        client_id=credentials["client_id"],
     )
 
     yield client
@@ -87,7 +90,7 @@ def sdk_client(credentials):
 @pytest.fixture(scope="session")
 def test_dataset_id(sdk_client, credentials):
     """Create a test dataset and return its ID"""
-    test_data_path = credentials.get('test_data_path')
+    test_data_path = credentials.get("test_data_path")
 
     if not test_data_path or not os.path.exists(test_data_path):
         pytest.skip("Test data path not provided or does not exist")
@@ -96,24 +99,21 @@ def test_dataset_id(sdk_client, credentials):
     upload_result = upload_folder_files_to_dataset(
         sdk_client,
         {
-            "client_id": credentials['client_id'],
+            "client_id": credentials["client_id"],
             "folder_path": test_data_path,
-            "data_type": "image"
-        }
+            "data_type": "image",
+        },
     )
     connection_id = upload_result.get("connection_id")
 
     dataset_config = schemas.DatasetConfig(
         dataset_name=f"MCP Test Dataset {uuid.uuid4().hex[:8]}",
         data_type="image",
-        dataset_description="Created by MCP integration tests"
+        dataset_description="Created by MCP integration tests",
     )
 
     dataset = dataset_ops.create_dataset_from_connection(
-        sdk_client,
-        dataset_config,
-        connection_id,
-        "local"
+        sdk_client, dataset_config, connection_id, "local"
     )
 
     dataset_id = dataset.dataset_id
@@ -140,14 +140,12 @@ def test_template_id(sdk_client):
             question_type=QuestionType.bounding_box,
             required=True,
             options=[Option(option_name="#FF0000")],
-            color="#FF0000"
+            color="#FF0000",
         )
     ]
 
     params = CreateTemplateParams(
-        template_name=template_name,
-        data_type="image",
-        questions=questions
+        template_name=template_name, data_type="image", questions=questions
     )
 
     template = template_ops.create_template(sdk_client, params)
@@ -162,7 +160,7 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
     rotations = schemas.RotationConfig(
         annotation_rotation_count=1,
         review_rotation_count=1,
-        client_review_rotation_count=1
+        client_review_rotation_count=1,
     )
 
     params = schemas.CreateProjectParams(
@@ -170,19 +168,14 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
         data_type="image",
         rotations=rotations,
         use_ai=False,
-        created_by=None
+        created_by=None,
     )
 
     # Get dataset and template objects
     dataset = LabellerrDataset(sdk_client, test_dataset_id)
     template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
 
-    project = project_ops.create_project(
-        sdk_client,
-        params,
-        [dataset],
-        template
-    )
+    project = project_ops.create_project(sdk_client, params, [dataset], template)
 
     return project.project_id
 
@@ -190,6 +183,7 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
 # =============================================================================
 # Test Cases
 # =============================================================================
+
 
 class TestSDKClientInitialization:
     """Test SDK client initialization"""
@@ -212,7 +206,7 @@ class TestDatasetOperations:
 
     def test_create_dataset_with_folder(self, sdk_client, credentials):
         """Test creating a dataset by uploading a folder"""
-        test_data_path = credentials.get('test_data_path')
+        test_data_path = credentials.get("test_data_path")
 
         if not test_data_path or not os.path.exists(test_data_path):
             pytest.skip("Test data path not provided")
@@ -221,25 +215,21 @@ class TestDatasetOperations:
         upload_result = upload_folder_files_to_dataset(
             sdk_client,
             {
-                "client_id": credentials['client_id'],
+                "client_id": credentials["client_id"],
                 "folder_path": test_data_path,
-                "data_type": "image"
-            }
+                "data_type": "image",
+            },
         )
         connection_id = upload_result.get("connection_id")
         assert connection_id is not None
 
         # Create dataset
         dataset_config = schemas.DatasetConfig(
-            dataset_name=f"Test Dataset {uuid.uuid4().hex[:8]}",
-            data_type="image"
+            dataset_name=f"Test Dataset {uuid.uuid4().hex[:8]}", data_type="image"
         )
 
         dataset = dataset_ops.create_dataset_from_connection(
-            sdk_client,
-            dataset_config,
-            connection_id,
-            "local"
+            sdk_client, dataset_config, connection_id, "local"
         )
 
         assert dataset.dataset_id is not None
@@ -258,12 +248,11 @@ class TestDatasetOperations:
 
     def test_list_datasets(self, sdk_client):
         """Test listing datasets"""
-        datasets = list(dataset_ops.list_datasets(
-            sdk_client,
-            "image",
-            schemas.DataSetScope.client,
-            page_size=10
-        ))
+        datasets = list(
+            dataset_ops.list_datasets(
+                sdk_client, "image", schemas.DataSetScope.client, page_size=10
+            )
+        )
 
         assert isinstance(datasets, list)
 
@@ -283,14 +272,12 @@ class TestAnnotationTemplateOperations:
                 question_type=QuestionType.bounding_box,
                 required=True,
                 options=[Option(option_name="#00FF00")],
-                color="#00FF00"
+                color="#00FF00",
             )
         ]
 
         params = CreateTemplateParams(
-            template_name=template_name,
-            data_type="image",
-            questions=questions
+            template_name=template_name, data_type="image", questions=questions
         )
 
         template = template_ops.create_template(sdk_client, params)
@@ -316,24 +303,17 @@ class TestProjectOperations:
         rotations = schemas.RotationConfig(
             annotation_rotation_count=1,
             review_rotation_count=1,
-            client_review_rotation_count=1
+            client_review_rotation_count=1,
         )
 
         params = schemas.CreateProjectParams(
-            project_name=project_name,
-            data_type="image",
-            rotations=rotations
+            project_name=project_name, data_type="image", rotations=rotations
         )
 
         dataset = LabellerrDataset(sdk_client, test_dataset_id)
         template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
 
-        project = project_ops.create_project(
-            sdk_client,
-            params,
-            [dataset],
-            template
-        )
+        project = project_ops.create_project(sdk_client, params, [dataset], template)
 
         assert project.project_id is not None
 
@@ -372,7 +352,7 @@ class TestExportOperations:
             export_description="Created by integration tests",
             export_format="json",
             statuses=["accepted"],
-            export_destination=schemas.ExportDestination.LOCAL
+            export_destination=schemas.ExportDestination.LOCAL,
         )
 
         export = project.create_export(export_config)
@@ -389,7 +369,7 @@ class TestExportOperations:
             export_description="Testing status check",
             export_format="json",
             statuses=["accepted"],
-            export_destination=schemas.ExportDestination.LOCAL
+            export_destination=schemas.ExportDestination.LOCAL,
         )
 
         export = project.create_export(export_config)
@@ -408,7 +388,7 @@ class TestCompleteWorkflow:
 
     def test_full_workflow(self, sdk_client, credentials):
         """Test creating dataset -> template -> project"""
-        test_data_path = credentials.get('test_data_path')
+        test_data_path = credentials.get("test_data_path")
 
         if not test_data_path or not os.path.exists(test_data_path):
             pytest.skip("Test data path not provided")
@@ -417,23 +397,20 @@ class TestCompleteWorkflow:
         upload_result = upload_folder_files_to_dataset(
             sdk_client,
             {
-                "client_id": credentials['client_id'],
+                "client_id": credentials["client_id"],
                 "folder_path": test_data_path,
-                "data_type": "image"
-            }
+                "data_type": "image",
+            },
         )
         connection_id = upload_result.get("connection_id")
 
         dataset_config = schemas.DatasetConfig(
             dataset_name=f"Workflow Test Dataset {uuid.uuid4().hex[:8]}",
-            data_type="image"
+            data_type="image",
         )
 
         dataset = dataset_ops.create_dataset_from_connection(
-            sdk_client,
-            dataset_config,
-            connection_id,
-            "local"
+            sdk_client, dataset_config, connection_id, "local"
         )
         dataset_id = dataset.dataset_id
 
@@ -446,14 +423,14 @@ class TestCompleteWorkflow:
                 question_type=QuestionType.bounding_box,
                 required=True,
                 options=[Option(option_name="#FF00FF")],
-                color="#FF00FF"
+                color="#FF00FF",
             )
         ]
 
         template_params = CreateTemplateParams(
             template_name=f"Workflow Test Template {uuid.uuid4().hex[:8]}",
             data_type="image",
-            questions=questions
+            questions=questions,
         )
 
         template = template_ops.create_template(sdk_client, template_params)
@@ -462,20 +439,17 @@ class TestCompleteWorkflow:
         rotations = schemas.RotationConfig(
             annotation_rotation_count=1,
             review_rotation_count=1,
-            client_review_rotation_count=1
+            client_review_rotation_count=1,
         )
 
         project_params = schemas.CreateProjectParams(
             project_name=f"Workflow Test Project {uuid.uuid4().hex[:8]}",
             data_type="image",
-            rotations=rotations
+            rotations=rotations,
         )
 
         project = project_ops.create_project(
-            sdk_client,
-            project_params,
-            [dataset],
-            template
+            sdk_client, project_params, [dataset], template
         )
         project_id = project.project_id
 

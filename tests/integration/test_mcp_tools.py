@@ -25,34 +25,32 @@ try:
 except ImportError as e:
     pytest.skip(
         f"MCP server dependencies not installed: {e}. Install with: pip install -e '.[mcp]'",
-        allow_module_level=True
+        allow_module_level=True,
     )
 
 
 @pytest.fixture(scope="session")
 def credentials():
     """Load credentials from environment"""
-    api_key = os.getenv('API_KEY')
-    api_secret = os.getenv('API_SECRET')
-    client_id = os.getenv('CLIENT_ID')
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
 
     if not all([api_key, api_secret, client_id]):
-        pytest.skip("Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)")
+        pytest.skip(
+            "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
+        )
 
-    return {
-        'api_key': api_key,
-        'api_secret': api_secret,
-        'client_id': client_id
-    }
+    return {"api_key": api_key, "api_secret": api_secret, "client_id": client_id}
 
 
 @pytest.fixture(scope="session")
 def mcp_server(credentials):
     """Create MCP server instance"""
     # Set env vars for MCP server code
-    os.environ['LABELLERR_API_KEY'] = credentials['api_key']
-    os.environ['LABELLERR_API_SECRET'] = credentials['api_secret']
-    os.environ['LABELLERR_CLIENT_ID'] = credentials['client_id']
+    os.environ["LABELLERR_API_KEY"] = credentials["api_key"]
+    os.environ["LABELLERR_API_SECRET"] = credentials["api_secret"]
+    os.environ["LABELLERR_CLIENT_ID"] = credentials["client_id"]
 
     server = LabellerrMCPServer()
     yield server
@@ -68,7 +66,9 @@ def test_dataset_id(mcp_server):
     import asyncio
 
     # List datasets and pick the first one
-    result = asyncio.run(mcp_server._handle_dataset_tool("dataset_list", {"data_type": "image"}))
+    result = asyncio.run(
+        mcp_server._handle_dataset_tool("dataset_list", {"data_type": "image"})
+    )
 
     datasets = result.get("response", {}).get("datasets", [])
     if not datasets:
@@ -95,6 +95,7 @@ def test_project_id(mcp_server):
 # =============================================================================
 # Test Project Management Tools (4 tools)
 # =============================================================================
+
 
 class TestProjectTools:
     """Test project management tools"""
@@ -136,9 +137,9 @@ class TestProjectTools:
                     "question_type": "BoundingBox",
                     "required": True,
                     "options": [{"option_name": "#FF0000"}],
-                    "color": "#FF0000"
+                    "color": "#FF0000",
                 }
-            ]
+            ],
         }
 
         template_result = asyncio.run(
@@ -153,10 +154,12 @@ class TestProjectTools:
             "created_by": "test@example.com",
             "dataset_id": test_dataset_id,
             "annotation_template_id": template_id,
-            "autolabel": False
+            "autolabel": False,
         }
 
-        result = asyncio.run(mcp_server._handle_project_tool("project_create", project_args))
+        result = asyncio.run(
+            mcp_server._handle_project_tool("project_create", project_args)
+        )
 
         assert "response" in result
         assert "project_id" in result["response"]
@@ -171,11 +174,13 @@ class TestProjectTools:
             "rotation_config": {
                 "annotation_rotation_count": 2,
                 "review_rotation_count": 1,
-                "client_review_rotation_count": 1
-            }
+                "client_review_rotation_count": 1,
+            },
         }
 
-        result = asyncio.run(mcp_server._handle_project_tool("project_update_rotation", args))
+        result = asyncio.run(
+            mcp_server._handle_project_tool("project_update_rotation", args)
+        )
 
         assert "response" in result or "message" in result
         print(f"✓ project_update_rotation: Updated rotations for {test_project_id}")
@@ -184,6 +189,7 @@ class TestProjectTools:
 # =============================================================================
 # Test Dataset Management Tools (5 tools)
 # =============================================================================
+
 
 class TestDatasetTools:
     """Test dataset management tools"""
@@ -220,7 +226,7 @@ class TestDatasetTools:
     def test_dataset_upload_files(self, mcp_server):
         """Test dataset_upload_files tool (requires test files)"""
         # This test is skipped if no test files are available
-        test_files_dir = os.getenv('LABELLERR_TEST_DATA_PATH')
+        test_files_dir = os.getenv("LABELLERR_TEST_DATA_PATH")
 
         if not test_files_dir or not os.path.exists(test_files_dir):
             pytest.skip("Test data path not provided")
@@ -231,37 +237,37 @@ class TestDatasetTools:
         test_files = [
             os.path.join(test_files_dir, f)
             for f in os.listdir(test_files_dir)
-            if f.lower().endswith(('.jpg', '.jpeg', '.png'))
-        ][:2]  # Take first 2 files
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        ][
+            :2
+        ]  # Take first 2 files
 
         if not test_files:
             pytest.skip("No image files found in test data path")
 
-        args = {
-            "files": test_files,
-            "data_type": "image"
-        }
+        args = {"files": test_files, "data_type": "image"}
 
-        result = asyncio.run(mcp_server._handle_dataset_tool("dataset_upload_files", args))
+        result = asyncio.run(
+            mcp_server._handle_dataset_tool("dataset_upload_files", args)
+        )
 
         assert "connection_id" in result or "response" in result
         print(f"✓ dataset_upload_files: Uploaded {len(test_files)} files")
 
     def test_dataset_upload_folder(self, mcp_server):
         """Test dataset_upload_folder tool (requires test folder)"""
-        test_folder = os.getenv('LABELLERR_TEST_DATA_PATH')
+        test_folder = os.getenv("LABELLERR_TEST_DATA_PATH")
 
         if not test_folder or not os.path.exists(test_folder):
             pytest.skip("Test data path not provided")
 
         import asyncio
 
-        args = {
-            "folder_path": test_folder,
-            "data_type": "image"
-        }
+        args = {"folder_path": test_folder, "data_type": "image"}
 
-        result = asyncio.run(mcp_server._handle_dataset_tool("dataset_upload_folder", args))
+        result = asyncio.run(
+            mcp_server._handle_dataset_tool("dataset_upload_folder", args)
+        )
 
         assert "connection_id" in result or "response" in result
         print(f"✓ dataset_upload_folder: Uploaded folder {test_folder}")
@@ -270,6 +276,7 @@ class TestDatasetTools:
 # =============================================================================
 # Test Annotation Tools (6 tools)
 # =============================================================================
+
 
 class TestAnnotationTools:
     """Test annotation tools"""
@@ -289,7 +296,7 @@ class TestAnnotationTools:
                     "question_type": "BoundingBox",
                     "required": True,
                     "options": [{"option_name": "#00FF00"}],
-                    "color": "#00FF00"
+                    "color": "#00FF00",
                 },
                 {
                     "question_number": 2,
@@ -300,17 +307,21 @@ class TestAnnotationTools:
                     "options": [
                         {"option_name": "Good"},
                         {"option_name": "Fair"},
-                        {"option_name": "Poor"}
-                    ]
-                }
-            ]
+                        {"option_name": "Poor"},
+                    ],
+                },
+            ],
         }
 
-        result = asyncio.run(mcp_server._handle_annotation_tool("template_create", args))
+        result = asyncio.run(
+            mcp_server._handle_annotation_tool("template_create", args)
+        )
 
         assert "response" in result
         assert "template_id" in result["response"]
-        print(f"✓ template_create: Created template {result['response']['template_id']}")
+        print(
+            f"✓ template_create: Created template {result['response']['template_id']}"
+        )
 
     def test_annotation_export(self, mcp_server, test_project_id):
         """Test annotation_export tool"""
@@ -321,11 +332,13 @@ class TestAnnotationTools:
             "export_name": f"MCP Test Export {uuid.uuid4().hex[:6]}",
             "export_description": "Created by MCP integration tests",
             "export_format": "json",
-            "statuses": ["accepted", "review"]
+            "statuses": ["accepted", "review"],
         }
 
         try:
-            result = asyncio.run(mcp_server._handle_annotation_tool("annotation_export", args))
+            result = asyncio.run(
+                mcp_server._handle_annotation_tool("annotation_export", args)
+            )
 
             assert "response" in result
             # May return report_id or job_id
@@ -347,7 +360,7 @@ class TestAnnotationTools:
             "export_name": f"MCP Status Test {uuid.uuid4().hex[:6]}",
             "export_description": "Testing status check",
             "export_format": "json",
-            "statuses": ["accepted"]
+            "statuses": ["accepted"],
         }
 
         try:
@@ -360,17 +373,18 @@ class TestAnnotationTools:
                 pytest.skip("Export did not return report_id")
 
             # Check status
-            args = {
-                "project_id": test_project_id,
-                "export_ids": [report_id]
-            }
+            args = {"project_id": test_project_id, "export_ids": [report_id]}
 
             result = asyncio.run(
-                mcp_server._handle_annotation_tool("annotation_check_export_status", args)
+                mcp_server._handle_annotation_tool(
+                    "annotation_check_export_status", args
+                )
             )
 
             assert "status" in result or "response" in result
-            print(f"✓ annotation_check_export_status: Checked status for export {report_id}")
+            print(
+                f"✓ annotation_check_export_status: Checked status for export {report_id}"
+            )
         except Exception as e:
             if "No files found" in str(e):
                 pytest.skip(f"Project has no annotated files - {e}")
@@ -387,7 +401,7 @@ class TestAnnotationTools:
             "export_name": f"MCP Download Test {uuid.uuid4().hex[:6]}",
             "export_description": "Testing download",
             "export_format": "json",
-            "statuses": ["accepted"]
+            "statuses": ["accepted"],
         }
 
         try:
@@ -403,10 +417,7 @@ class TestAnnotationTools:
             time.sleep(2)
 
             # Try to download
-            args = {
-                "project_id": test_project_id,
-                "export_id": report_id
-            }
+            args = {"project_id": test_project_id, "export_id": report_id}
 
             asyncio.run(
                 mcp_server._handle_annotation_tool("annotation_download_export", args)
@@ -434,6 +445,7 @@ class TestAnnotationTools:
 # Test Monitoring Tools (4 tools)
 # =============================================================================
 
+
 class TestMonitoringTools:
     """Test monitoring tools"""
 
@@ -441,7 +453,9 @@ class TestMonitoringTools:
         """Test monitor_system_health tool"""
         import asyncio
 
-        result = asyncio.run(mcp_server._handle_monitoring_tool("monitor_system_health", {}))
+        result = asyncio.run(
+            mcp_server._handle_monitoring_tool("monitor_system_health", {})
+        )
 
         assert "status" in result
         assert result["status"] == "healthy"
@@ -457,7 +471,9 @@ class TestMonitoringTools:
 
         assert "active_operations" in result
         assert isinstance(result["active_operations"], list)
-        print(f"✓ monitor_active_operations: {len(result['active_operations'])} active operations")
+        print(
+            f"✓ monitor_active_operations: {len(result['active_operations'])} active operations"
+        )
 
     def test_monitor_project_progress(self, mcp_server, test_project_id):
         """Test monitor_project_progress tool"""
@@ -483,6 +499,7 @@ class TestMonitoringTools:
 # Test Query Tools (4 tools)
 # =============================================================================
 
+
 class TestQueryTools:
     """Test query tools"""
 
@@ -491,7 +508,9 @@ class TestQueryTools:
         import asyncio
 
         args = {"project_id": test_project_id}
-        result = asyncio.run(mcp_server._handle_query_tool("query_project_statistics", args))
+        result = asyncio.run(
+            mcp_server._handle_query_tool("query_project_statistics", args)
+        )
 
         assert "project_id" in result or "statistics" in result
         print(f"✓ query_project_statistics: Retrieved stats for {test_project_id}")
@@ -511,18 +530,24 @@ class TestQueryTools:
         import asyncio
 
         args = {"limit": 5}
-        result = asyncio.run(mcp_server._handle_query_tool("query_operation_history", args))
+        result = asyncio.run(
+            mcp_server._handle_query_tool("query_operation_history", args)
+        )
 
         assert "operations" in result
         assert isinstance(result["operations"], list)
-        print(f"✓ query_operation_history: Retrieved {len(result['operations'])} operations")
+        print(
+            f"✓ query_operation_history: Retrieved {len(result['operations'])} operations"
+        )
 
     def test_query_search_projects(self, mcp_server):
         """Test query_search_projects tool"""
         import asyncio
 
         args = {"query": "test"}
-        result = asyncio.run(mcp_server._handle_query_tool("query_search_projects", args))
+        result = asyncio.run(
+            mcp_server._handle_query_tool("query_search_projects", args)
+        )
 
         assert "results" in result or "projects" in result
         print("✓ query_search_projects: Search completed")
@@ -532,6 +557,7 @@ class TestQueryTools:
 # Test Complete Workflow
 # =============================================================================
 
+
 class TestCompleteWorkflow:
     """Test complete end-to-end workflow using MCP tools"""
 
@@ -539,9 +565,9 @@ class TestCompleteWorkflow:
         """Test creating a complete project from scratch"""
         import asyncio
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("COMPLETE WORKFLOW TEST: Dataset → Template → Project")
-        print("="*80)
+        print("=" * 80)
 
         # Step 1: Use existing dataset (creating requires file upload)
         print("\n[1/3] Using existing dataset...")
@@ -561,9 +587,9 @@ class TestCompleteWorkflow:
                     "question_type": "BoundingBox",
                     "required": True,
                     "options": [{"option_name": "#FF0000"}],
-                    "color": "#FF0000"
+                    "color": "#FF0000",
                 }
-            ]
+            ],
         }
 
         template_result = asyncio.run(
@@ -580,7 +606,7 @@ class TestCompleteWorkflow:
             "created_by": "test@example.com",
             "dataset_id": dataset_id,
             "annotation_template_id": template_id,
-            "autolabel": False
+            "autolabel": False,
         }
 
         project_result = asyncio.run(
@@ -600,20 +626,21 @@ class TestCompleteWorkflow:
         assert project_details["response"]["annotation_template_id"] == template_id
 
         print("    ✓ Project verified successfully!")
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("WORKFLOW TEST COMPLETED SUCCESSFULLY!")
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
 
 # =============================================================================
 # Test Summary
 # =============================================================================
 
+
 def test_summary():
     """Print test summary"""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("MCP SERVER INTEGRATION TEST SUMMARY")
-    print("="*80)
+    print("=" * 80)
     print("\nTested 23 MCP Tools:")
     print("\n  Project Management (4):")
     print("    ✓ project_list")
@@ -643,7 +670,7 @@ def test_summary():
     print("    ✓ query_dataset_info")
     print("    ✓ query_operation_history")
     print("    ✓ query_search_projects")
-    print("\n" + "="*80 + "\n")
+    print("\n" + "=" * 80 + "\n")
 
 
 if __name__ == "__main__":

@@ -97,6 +97,34 @@ class LabellerrFile(metaclass=LabellerrFileMeta):
         self.client = client
         self.__file_data = kwargs.get("file_data", {})
 
+    @classmethod
+    def from_file_data(cls, client: "LabellerrClient", file_data: dict):
+        """
+        Create a LabellerrFile instance from file_data dictionary.
+
+        :param client: LabellerrClient instance
+        :param file_data: Dictionary containing file information
+        :return: Instance of appropriate LabellerrFile subclass based on data_type
+        """
+        # Validate required fields
+        required_fields = {"file_id", "file_name", "data_type", "file_metadata"}
+        missing_fields = required_fields - set(file_data.keys())
+        if missing_fields:
+            raise ValueError(f"Missing required fields in file_data: {missing_fields}")
+
+        data_type = file_data.get("data_type", "").lower()
+
+        # Get the appropriate file class from registry
+        file_class = LabellerrFileMeta._registry.get(data_type)
+        if file_class is None:
+            # If no specific class, use base LabellerrFile
+            file_class = cls
+
+        # Create instance with file_data
+        return file_class(
+            client=client, file_id=file_data.get("file_id"), file_data=file_data
+        )
+
     @property
     def file_id(self):
         return self.__file_data.get("file_id", "")
@@ -112,3 +140,11 @@ class LabellerrFile(metaclass=LabellerrFileMeta):
     @property
     def metadata(self):
         return self.__file_data.get("file_metadata", {})
+
+    @property
+    def file_name(self):
+        return self.__file_data.get("file_name", "")
+
+    @property
+    def data_type(self):
+        return self.__file_data.get("data_type")

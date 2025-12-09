@@ -52,8 +52,8 @@ except ImportError:
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stderr)]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stderr)],
 )
 logger = logging.getLogger(__name__)
 
@@ -90,9 +90,7 @@ class LabellerrMCPServer:
 
         try:
             self.client = LabellerrClient(
-                api_key=api_key,
-                api_secret=api_secret,
-                client_id=self.client_id
+                api_key=api_key, api_secret=api_secret, client_id=self.client_id
             )
             logger.info("Labellerr SDK client initialized successfully")
         except Exception as e:
@@ -108,7 +106,7 @@ class LabellerrMCPServer:
                 Tool(
                     name=tool["name"],
                     description=tool["description"],
-                    inputSchema=tool["inputSchema"]
+                    inputSchema=tool["inputSchema"],
                 )
                 for tool in ALL_TOOLS
             ]
@@ -117,12 +115,17 @@ class LabellerrMCPServer:
         async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             """Handle tool execution"""
             if not self.client:
-                return [TextContent(
-                    type="text",
-                    text=json.dumps({
-                        "error": "SDK client not initialized. Please check environment variables."
-                    }, indent=2)
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "error": "SDK client not initialized. Please check environment variables."
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
 
             try:
                 # Route to appropriate handler based on tool category
@@ -139,46 +142,53 @@ class LabellerrMCPServer:
                 else:
                     result = {"error": f"Unknown tool: {name}"}
 
-                return [TextContent(
-                    type="text",
-                    text=json.dumps(result, indent=2, default=str)
-                )]
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(result, indent=2, default=str)
+                    )
+                ]
 
             except LabellerrError as e:
                 logger.error(f"SDK error in tool execution: {e}", exc_info=True)
 
                 # Log operation for history
-                self.operation_history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "tool": name,
-                    "status": "failed",
-                    "error": str(e)
-                })
+                self.operation_history.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "tool": name,
+                        "status": "failed",
+                        "error": str(e),
+                    }
+                )
 
-                return [TextContent(
-                    type="text",
-                    text=json.dumps({
-                        "error": f"SDK Error: {str(e)}"
-                    }, indent=2)
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps({"error": f"SDK Error: {str(e)}"}, indent=2),
+                    )
+                ]
 
             except Exception as e:
                 logger.error(f"Tool execution failed: {e}", exc_info=True)
 
                 # Log operation for history
-                self.operation_history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "tool": name,
-                    "status": "failed",
-                    "error": str(e)
-                })
+                self.operation_history.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "tool": name,
+                        "status": "failed",
+                        "error": str(e),
+                    }
+                )
 
-                return [TextContent(
-                    type="text",
-                    text=json.dumps({
-                        "error": f"Tool execution failed: {str(e)}"
-                    }, indent=2)
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {"error": f"Tool execution failed: {str(e)}"}, indent=2
+                        ),
+                    )
+                ]
 
         @self.server.list_resources()
         async def list_resources() -> list[Resource]:
@@ -187,30 +197,38 @@ class LabellerrMCPServer:
 
             # Add active projects as resources
             for project_id, project in self.active_projects.items():
-                resources.append(Resource(
-                    uri=f"labellerr://project/{project_id}",
-                    name=project.get("project_name", project_id),
-                    mimeType="application/json",
-                    description=(f"Project: {project.get('project_name', project_id)} "
-                                 f"({project.get('data_type', 'unknown')})")
-                ))
+                resources.append(
+                    Resource(
+                        uri=f"labellerr://project/{project_id}",
+                        name=project.get("project_name", project_id),
+                        mimeType="application/json",
+                        description=(
+                            f"Project: {project.get('project_name', project_id)} "
+                            f"({project.get('data_type', 'unknown')})"
+                        ),
+                    )
+                )
 
             # Add active datasets as resources
             for dataset_id, dataset in self.active_datasets.items():
-                resources.append(Resource(
-                    uri=f"labellerr://dataset/{dataset_id}",
-                    name=dataset.get("name", dataset_id),
-                    mimeType="application/json",
-                    description=f"Dataset: {dataset.get('name', dataset_id)}"
-                ))
+                resources.append(
+                    Resource(
+                        uri=f"labellerr://dataset/{dataset_id}",
+                        name=dataset.get("name", dataset_id),
+                        mimeType="application/json",
+                        description=f"Dataset: {dataset.get('name', dataset_id)}",
+                    )
+                )
 
             # Add operation history as a resource
-            resources.append(Resource(
-                uri="labellerr://history",
-                name="Operation History",
-                mimeType="application/json",
-                description="History of all operations performed"
-            ))
+            resources.append(
+                Resource(
+                    uri="labellerr://history",
+                    name="Operation History",
+                    mimeType="application/json",
+                    description="History of all operations performed",
+                )
+            )
 
             return resources
 
@@ -252,29 +270,27 @@ class LabellerrMCPServer:
                         "workflow": {
                             "step_1": "Create dataset with files: dataset_upload_folder or dataset_upload_files",
                             "step_2": "Create annotation template: template_create",
-                            "step_3": "Create project: project_create (with dataset_id and annotation_template_id)"
-                        }
+                            "step_3": "Create project: project_create (with dataset_id and annotation_template_id)",
+                        },
                     }
 
                 if not template_id:
                     return {
                         "error": "annotation_template_id is required",
-                        "message": "Please create an annotation template first using template_create tool"
+                        "message": "Please create an annotation template first using template_create tool",
                     }
 
                 # Validate dataset exists and is ready
                 logger.info(f"Validating dataset {dataset_id}...")
                 try:
                     dataset_data = await asyncio.to_thread(
-                        LabellerrDatasetMeta.get_dataset,
-                        self.client,
-                        dataset_id
+                        LabellerrDatasetMeta.get_dataset, self.client, dataset_id
                     )
 
                     if not dataset_data:
                         return {
                             "error": f"Dataset {dataset_id} not found",
-                            "dataset_id": dataset_id
+                            "dataset_id": dataset_id,
                         }
 
                     dataset_status = dataset_data.get("status_code")
@@ -283,24 +299,27 @@ class LabellerrMCPServer:
                             "error": f"Dataset {dataset_id} is not ready",
                             "dataset_id": dataset_id,
                             "status_code": dataset_status,
-                            "message": "Dataset is still processing. Please wait and try again."
+                            "message": "Dataset is still processing. Please wait and try again.",
                         }
 
                     logger.info(f"✓ Dataset {dataset_id} is ready")
                 except Exception as e:
                     return {
                         "error": f"Failed to validate dataset {dataset_id}",
-                        "details": str(e)
+                        "details": str(e),
                     }
 
                 # Create project using SDK
                 logger.info(f"Creating project '{args['project_name']}'...")
 
-                rotations_config = args.get("rotation_config", {
-                    "annotation_rotation_count": 1,
-                    "review_rotation_count": 1,
-                    "client_review_rotation_count": 1
-                })
+                rotations_config = args.get(
+                    "rotation_config",
+                    {
+                        "annotation_rotation_count": 1,
+                        "review_rotation_count": 1,
+                        "client_review_rotation_count": 1,
+                    },
+                )
 
                 # Create params using Pydantic schema
                 params = schemas.CreateProjectParams(
@@ -308,7 +327,7 @@ class LabellerrMCPServer:
                     data_type=args["data_type"],
                     rotations=schemas.RotationConfig(**rotations_config),
                     use_ai=args.get("autolabel", False),
-                    created_by=args.get("created_by")
+                    created_by=args.get("created_by"),
                 )
 
                 # Get dataset and template objects
@@ -325,7 +344,7 @@ class LabellerrMCPServer:
                     self.client,
                     params,
                     [dataset_obj],
-                    template_obj
+                    template_obj,
                 )
 
                 project_id = project.project_id
@@ -337,26 +356,23 @@ class LabellerrMCPServer:
                     "data_type": args["data_type"],
                     "dataset_id": dataset_id,
                     "template_id": template_id,
-                    "created_at": datetime.now().isoformat()
+                    "created_at": datetime.now().isoformat(),
                 }
                 logger.info(f"✓ Project created successfully: {project_id}")
 
                 result = {
-                    "response": {
-                        "project_id": project_id
-                    },
+                    "response": {"project_id": project_id},
                     "workflow_completed": {
                         "step_1": f"✓ Dataset: {dataset_id}",
                         "step_2": f"✓ Template: {template_id}",
-                        "step_3": f"✓ Project: {project_id}"
-                    }
+                        "step_3": f"✓ Project: {project_id}",
+                    },
                 }
 
             elif name == "project_list":
                 # Use SDK to list projects
                 projects = await asyncio.to_thread(
-                    project_ops.list_projects,
-                    self.client
+                    project_ops.list_projects, self.client
                 )
 
                 # Convert project objects to dicts
@@ -365,7 +381,7 @@ class LabellerrMCPServer:
                     project_data = await asyncio.to_thread(
                         LabellerrProjectMeta.get_project,
                         self.client,
-                        project.project_id
+                        project.project_id,
                     )
                     if project_data:
                         projects_list.append(project_data)
@@ -376,9 +392,7 @@ class LabellerrMCPServer:
             elif name == "project_get":
                 # Use SDK to get project details
                 project_data = await asyncio.to_thread(
-                    LabellerrProjectMeta.get_project,
-                    self.client,
-                    args["project_id"]
+                    LabellerrProjectMeta.get_project, self.client, args["project_id"]
                 )
 
                 if project_data:
@@ -392,8 +406,7 @@ class LabellerrMCPServer:
                     LabellerrProject, self.client, args["project_id"]
                 )
                 update_result = await asyncio.to_thread(
-                    project.update_rotation_count,
-                    args["rotation_config"]
+                    project.update_rotation_count, args["rotation_config"]
                 )
                 result = {"response": update_result}
 
@@ -401,13 +414,19 @@ class LabellerrMCPServer:
                 result = {"error": f"Unknown project tool: {name}"}
 
             # Log successful operation
-            self.operation_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "tool": name,
-                "duration": (datetime.now() - start_time).total_seconds(),
-                "status": "success",
-                "args": {k: v for k, v in args.items() if k not in ["files_to_upload", "folder_to_upload"]}
-            })
+            self.operation_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "tool": name,
+                    "duration": (datetime.now() - start_time).total_seconds(),
+                    "status": "success",
+                    "args": {
+                        k: v
+                        for k, v in args.items()
+                        if k not in ["files_to_upload", "folder_to_upload"]
+                    },
+                }
+            )
 
             return result
 
@@ -428,31 +447,30 @@ class LabellerrMCPServer:
                 # STEP 1: Upload files if folder_path or files provided
                 if not connection_id:
                     if args.get("folder_path"):
-                        logger.info(f"[1/3] Uploading files from {args['folder_path']}...")
+                        logger.info(
+                            f"[1/3] Uploading files from {args['folder_path']}..."
+                        )
                         upload_result = await asyncio.to_thread(
                             upload_folder_files_to_dataset,
                             self.client,
                             {
                                 "client_id": self.client_id,
                                 "folder_path": args["folder_path"],
-                                "data_type": args["data_type"]
-                            }
+                                "data_type": args["data_type"],
+                            },
                         )
                         connection_id = upload_result.get("connection_id")
                         logger.info(f"✓ Files uploaded! Connection ID: {connection_id}")
                     elif args.get("files"):
                         logger.info(f"[1/3] Uploading {len(args['files'])} files...")
                         connection_id = await asyncio.to_thread(
-                            upload_files,
-                            self.client,
-                            self.client_id,
-                            args["files"]
+                            upload_files, self.client, self.client_id, args["files"]
                         )
                         logger.info(f"✓ Files uploaded! Connection ID: {connection_id}")
                     else:
                         return {
                             "error": "Either connection_id, folder_path, or files must be provided",
-                            "hint": "Provide folder_path to upload an entire folder, or files array for specific files"
+                            "hint": "Provide folder_path to upload an entire folder, or files array for specific files",
                         }
 
                 # STEP 2: Create dataset with connection_id
@@ -462,7 +480,7 @@ class LabellerrMCPServer:
                     dataset_name=args["dataset_name"],
                     data_type=args["data_type"],
                     dataset_description=args.get("dataset_description", ""),
-                    multimodal_indexing=False
+                    multimodal_indexing=False,
                 )
 
                 dataset = await asyncio.to_thread(
@@ -470,7 +488,7 @@ class LabellerrMCPServer:
                     self.client,
                     dataset_config,
                     connection_id,
-                    "local"
+                    "local",
                 )
 
                 dataset_id = dataset.dataset_id
@@ -492,16 +510,18 @@ class LabellerrMCPServer:
                                     "dataset_id": dataset_id,
                                     "files_count": files_count,
                                     "status": "ready",
-                                    "status_code": 300
+                                    "status_code": 300,
                                 }
                             }
                         else:
-                            logger.warning(f"Dataset processing completed with status {status_code}")
+                            logger.warning(
+                                f"Dataset processing completed with status {status_code}"
+                            )
                             result = {
                                 "response": {
                                     "dataset_id": dataset_id,
                                     "status_code": status_code,
-                                    "status": "processing_failed"
+                                    "status": "processing_failed",
                                 }
                             }
                     except Exception as e:
@@ -510,30 +530,23 @@ class LabellerrMCPServer:
                             "response": {
                                 "dataset_id": dataset_id,
                                 "warning": f"Dataset created but processing status unknown: {str(e)}",
-                                "status": "unknown"
+                                "status": "unknown",
                             }
                         }
                 else:
-                    result = {
-                        "response": {
-                            "dataset_id": dataset_id
-                        }
-                    }
+                    result = {"response": {"dataset_id": dataset_id}}
 
                 # Cache the dataset
                 self.active_datasets[dataset_id] = {
                     "dataset_id": dataset_id,
                     "name": args["dataset_name"],
                     "data_type": args["data_type"],
-                    "created_at": datetime.now().isoformat()
+                    "created_at": datetime.now().isoformat(),
                 }
 
             elif name == "dataset_upload_files":
                 connection_id = await asyncio.to_thread(
-                    upload_files,
-                    self.client,
-                    self.client_id,
-                    args["files"]
+                    upload_files, self.client, self.client_id, args["files"]
                 )
                 result = {"connection_id": connection_id, "success": True}
 
@@ -544,13 +557,13 @@ class LabellerrMCPServer:
                     {
                         "client_id": self.client_id,
                         "folder_path": args["folder_path"],
-                        "data_type": args["data_type"]
-                    }
+                        "data_type": args["data_type"],
+                    },
                 )
                 result = {
                     "connection_id": upload_result.get("connection_id"),
                     "success": True,
-                    "uploaded_files": len(upload_result.get("success", []))
+                    "uploaded_files": len(upload_result.get("success", [])),
                 }
 
             elif name == "dataset_list":
@@ -563,7 +576,7 @@ class LabellerrMCPServer:
                     self.client,
                     data_type,
                     schemas.DataSetScope(scope),
-                    page_size=100  # Get first 100 datasets
+                    page_size=100,  # Get first 100 datasets
                 )
 
                 # Convert generator to list
@@ -580,9 +593,7 @@ class LabellerrMCPServer:
             elif name == "dataset_get":
                 # Use SDK to get dataset details
                 dataset_data = await asyncio.to_thread(
-                    LabellerrDatasetMeta.get_dataset,
-                    self.client,
-                    args["dataset_id"]
+                    LabellerrDatasetMeta.get_dataset, self.client, args["dataset_id"]
                 )
 
                 if dataset_data:
@@ -593,12 +604,14 @@ class LabellerrMCPServer:
             else:
                 result = {"error": f"Unknown dataset tool: {name}"}
 
-            self.operation_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "tool": name,
-                "duration": (datetime.now() - start_time).total_seconds(),
-                "status": "success"
-            })
+            self.operation_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "tool": name,
+                    "duration": (datetime.now() - start_time).total_seconds(),
+                    "status": "success",
+                }
+            )
 
             return result
 
@@ -618,12 +631,17 @@ class LabellerrMCPServer:
                 # Convert questions to AnnotationQuestion objects
                 questions = []
                 for q in args["questions"]:
-                    question_type = q.get("question_type", q.get("option_type", "BoundingBox"))
+                    question_type = q.get(
+                        "question_type", q.get("option_type", "BoundingBox")
+                    )
 
                     # Handle options
                     options = None
                     if q.get("options"):
-                        options = [Option(option_name=opt.get("option_name", opt)) for opt in q["options"]]
+                        options = [
+                            Option(option_name=opt.get("option_name", opt))
+                            for opt in q["options"]
+                        ]
 
                     question = AnnotationQuestion(
                         question_number=q.get("question_number", 1),
@@ -632,7 +650,7 @@ class LabellerrMCPServer:
                         question_type=QuestionType(question_type),
                         required=q.get("required", True),
                         options=options,
-                        color=q.get("color")
+                        color=q.get("color"),
                     )
                     questions.append(question)
 
@@ -640,24 +658,18 @@ class LabellerrMCPServer:
                 params = TemplateParams(
                     template_name=args["template_name"],
                     data_type=args["data_type"],
-                    questions=questions
+                    questions=questions,
                 )
 
                 # Create template using SDK
                 template = await asyncio.to_thread(
-                    template_ops.create_template,
-                    self.client,
-                    params
+                    template_ops.create_template, self.client, params
                 )
 
                 template_id = template.annotation_template_id
                 logger.info(f"Template created successfully: {template_id}")
 
-                result = {
-                    "response": {
-                        "template_id": template_id
-                    }
-                }
+                result = {"response": {"template_id": template_id}}
 
             elif name == "annotation_export":
                 # Get project and create export
@@ -670,19 +682,12 @@ class LabellerrMCPServer:
                     export_description=args.get("export_description", ""),
                     export_format=args["export_format"],
                     statuses=args["statuses"],
-                    export_destination=schemas.ExportDestination.LOCAL
+                    export_destination=schemas.ExportDestination.LOCAL,
                 )
 
-                export = await asyncio.to_thread(
-                    project.create_export,
-                    export_config
-                )
+                export = await asyncio.to_thread(project.create_export, export_config)
 
-                result = {
-                    "response": {
-                        "report_id": export.report_id
-                    }
-                }
+                result = {"response": {"report_id": export.report_id}}
 
             elif name == "annotation_check_export_status":
                 # Get project and check export status
@@ -691,8 +696,7 @@ class LabellerrMCPServer:
                 )
 
                 status_result = await asyncio.to_thread(
-                    project.check_export_status,
-                    args["export_ids"]
+                    project.check_export_status, args["export_ids"]
                 )
 
                 # Parse JSON string result if needed
@@ -712,7 +716,7 @@ class LabellerrMCPServer:
                     args["project_id"],
                     str(uuid.uuid4()),
                     args["export_id"],
-                    self.client_id
+                    self.client_id,
                 )
 
                 result = {"response": download_result}
@@ -727,7 +731,7 @@ class LabellerrMCPServer:
                     project.upload_preannotations,
                     args["annotation_format"],
                     args["annotation_file"],
-                    _async=False
+                    _async=False,
                 )
 
                 result = {"response": upload_result}
@@ -742,25 +746,27 @@ class LabellerrMCPServer:
                     project.upload_preannotations,
                     args["annotation_format"],
                     args["annotation_file"],
-                    _async=True
+                    _async=True,
                 )
 
                 result = {
                     "response": {
                         "status": "Job started",
-                        "message": "Preannotation upload job has been submitted"
+                        "message": "Preannotation upload job has been submitted",
                     }
                 }
 
             else:
                 result = {"error": f"Unknown annotation tool: {name}"}
 
-            self.operation_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "tool": name,
-                "duration": (datetime.now() - start_time).total_seconds(),
-                "status": "success"
-            })
+            self.operation_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "tool": name,
+                    "duration": (datetime.now() - start_time).total_seconds(),
+                    "status": "success",
+                }
+            )
 
             return result
 
@@ -778,15 +784,13 @@ class LabellerrMCPServer:
                     "success": True,
                     "job_id": args["job_id"],
                     "status": "This feature requires specific job tracking API",
-                    "message": "Use check_export_status for export jobs"
+                    "message": "Use check_export_status for export jobs",
                 }
 
             elif name == "monitor_project_progress":
                 # Get project details for progress using SDK
                 project_data = await asyncio.to_thread(
-                    LabellerrProjectMeta.get_project,
-                    self.client,
-                    args["project_id"]
+                    LabellerrProjectMeta.get_project, self.client, args["project_id"]
                 )
                 result = {"response": project_data}
 
@@ -794,7 +798,7 @@ class LabellerrMCPServer:
                 recent_ops = [op for op in self.operation_history[-50:]]
                 result = {
                     "active_operations": recent_ops,
-                    "total_operations": len(self.operation_history)
+                    "total_operations": len(self.operation_history),
                 }
 
             elif name == "monitor_system_health":
@@ -804,7 +808,9 @@ class LabellerrMCPServer:
                     "active_projects": len(self.active_projects),
                     "active_datasets": len(self.active_datasets),
                     "operations_performed": len(self.operation_history),
-                    "last_operation": self.operation_history[-1] if self.operation_history else None
+                    "last_operation": (
+                        self.operation_history[-1] if self.operation_history else None
+                    ),
                 }
 
             else:
@@ -824,9 +830,7 @@ class LabellerrMCPServer:
             if name == "query_project_statistics":
                 # Get project details using SDK
                 project_data = await asyncio.to_thread(
-                    LabellerrProjectMeta.get_project,
-                    self.client,
-                    args["project_id"]
+                    LabellerrProjectMeta.get_project, self.client, args["project_id"]
                 )
 
                 if project_data:
@@ -838,16 +842,16 @@ class LabellerrMCPServer:
                         "annotated_files": project_data.get("annotated_files", 0),
                         "reviewed_files": project_data.get("reviewed_files", 0),
                         "accepted_files": project_data.get("accepted_files", 0),
-                        "completion_percentage": project_data.get("completion_percentage", 0)
+                        "completion_percentage": project_data.get(
+                            "completion_percentage", 0
+                        ),
                     }
                 else:
                     result = {"error": f"Project {args['project_id']} not found"}
 
             elif name == "query_dataset_info":
                 dataset_data = await asyncio.to_thread(
-                    LabellerrDatasetMeta.get_dataset,
-                    self.client,
-                    args["dataset_id"]
+                    LabellerrDatasetMeta.get_dataset, self.client, args["dataset_id"]
                 )
                 result = {"response": dataset_data}
 
@@ -861,14 +865,13 @@ class LabellerrMCPServer:
 
                 result = {
                     "total": len(history),
-                    "operations": list(reversed(history[-limit:]))
+                    "operations": list(reversed(history[-limit:])),
                 }
 
             elif name == "query_search_projects":
                 # Get all projects using SDK and filter
                 projects = await asyncio.to_thread(
-                    project_ops.list_projects,
-                    self.client
+                    project_ops.list_projects, self.client
                 )
 
                 query = args["query"].lower()
@@ -878,11 +881,13 @@ class LabellerrMCPServer:
                     project_data = await asyncio.to_thread(
                         LabellerrProjectMeta.get_project,
                         self.client,
-                        project.project_id
+                        project.project_id,
                     )
                     if project_data:
-                        if (query in project_data.get("project_name", "").lower() or
-                                query in project_data.get("data_type", "").lower()):
+                        if (
+                            query in project_data.get("project_name", "").lower()
+                            or query in project_data.get("data_type", "").lower()
+                        ):
                             matching_projects.append(project_data)
 
                 result = {"projects": matching_projects}
@@ -903,9 +908,7 @@ class LabellerrMCPServer:
 
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
+                read_stream, write_stream, self.server.create_initialization_options()
             )
 
 
