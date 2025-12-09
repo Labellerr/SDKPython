@@ -30,7 +30,7 @@ def get_project_root():
 def get_env_file():
     """Get or create .env file path"""
     project_root = get_project_root()
-    env_file = project_root / '.env'
+    env_file = project_root / ".env"
 
     # Try to find existing .env file
     found = find_dotenv(str(project_root))
@@ -50,16 +50,19 @@ def check_and_prompt_credentials():
     env_file = get_env_file()
     load_dotenv(env_file)
 
-    api_key = os.getenv('API_KEY')
-    api_secret = os.getenv('API_SECRET')
-    client_id = os.getenv('CLIENT_ID')
-    test_data_path = os.getenv('LABELLERR_TEST_DATA_PATH')
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
+    test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
     required_vars = {
-        'API_KEY': ('API Key', api_key),
-        'API_SECRET': ('API Secret', api_secret),
-        'CLIENT_ID': ('Client ID', client_id),
-        'LABELLERR_TEST_DATA_PATH': ('Test Data Path (folder with images)', test_data_path)
+        "API_KEY": ("API Key", api_key),
+        "API_SECRET": ("API Secret", api_secret),
+        "CLIENT_ID": ("Client ID", client_id),
+        "LABELLERR_TEST_DATA_PATH": (
+            "Test Data Path (folder with images)",
+            test_data_path,
+        ),
     }
 
     print("=" * 60)
@@ -88,7 +91,7 @@ def check_and_prompt_credentials():
 
         for env_var, display_name in missing:
             # Use getpass for sensitive fields
-            if 'SECRET' in env_var or 'KEY' in env_var:
+            if "SECRET" in env_var or "KEY" in env_var:
                 value = getpass.getpass(f"{display_name}: ")
             else:
                 value = input(f"{display_name}: ")
@@ -101,7 +104,7 @@ def check_and_prompt_credentials():
                 try:
                     # Create .env file if it doesn't exist
                     if not os.path.exists(env_file):
-                        with open(env_file, 'w') as f:
+                        with open(env_file, "w") as f:
                             f.write("# Labellerr API Credentials\n")
 
                     set_key(env_file, env_var, value)
@@ -112,9 +115,9 @@ def check_and_prompt_credentials():
                 print(f"  ⚠ Warning: {env_var} left empty")
 
     # Check if all required vars are now available (re-check after prompting)
-    api_key = os.getenv('API_KEY')
-    api_secret = os.getenv('API_SECRET')
-    client_id = os.getenv('CLIENT_ID')
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
     all_present = all([api_key, api_secret, client_id])
 
     if all_present:
@@ -144,9 +147,9 @@ def validate_credentials():
         from labellerr.core import projects as project_ops
 
         client = LabellerrClient(
-            api_key=os.getenv('API_KEY'),
-            api_secret=os.getenv('API_SECRET'),
-            client_id=os.getenv('CLIENT_ID')
+            api_key=os.getenv("API_KEY"),
+            api_secret=os.getenv("API_SECRET"),
+            client_id=os.getenv("CLIENT_ID"),
         )
 
         # Try to list projects as validation
@@ -170,7 +173,7 @@ def check_test_data():
     Returns:
         bool: True if test data is accessible
     """
-    test_data_path = os.getenv('LABELLERR_TEST_DATA_PATH')
+    test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
     if not test_data_path:
         print("\n⚠ Warning: LABELLERR_TEST_DATA_PATH not set")
@@ -183,10 +186,10 @@ def check_test_data():
         return False
 
     # Check for image files
-    image_extensions = ['.jpg', '.jpeg', '.png', '.tiff']
+    image_extensions = [".jpg", ".jpeg", ".png", ".tiff"]
     files = []
     for ext in image_extensions:
-        files.extend(Path(test_data_path).rglob(f'*{ext}'))
+        files.extend(Path(test_data_path).rglob(f"*{ext}"))
 
     if not files:
         print(f"\n⚠ Warning: No image files found in: {test_data_path}")
@@ -217,13 +220,9 @@ def run_tests():
         test_file = test_dir / "test_mcp_server.py"
 
         # Run pytest with verbose output
-        exit_code = pytest.main([
-            str(test_file),
-            "-v",
-            "-s",
-            "--tb=short",
-            "--color=yes"
-        ])
+        exit_code = pytest.main(
+            [str(test_file), "-v", "-s", "--tb=short", "--color=yes"]
+        )
 
         return exit_code
 
@@ -271,5 +270,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

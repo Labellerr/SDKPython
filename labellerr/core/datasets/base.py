@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from abc import ABCMeta
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, Generator, TYPE_CHECKING
 
 from .. import constants
 from ..exceptions import InvalidDatasetError, LabellerrError
@@ -175,15 +175,16 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             on_success=on_success,
         )
 
-    def fetch_files(self, page_size: int = 1000) -> List[LabellerrFile]:
+    def fetch_files(
+        self, page_size: int = 1000
+    ) -> Generator[LabellerrFile, None, None]:
         """
         Fetch all files in this dataset as LabellerrFile instances.
 
-        :param page_size: Number of files to fetch per API request (default: 10)
-        :return: List of file IDs
+        :param page_size: Number of files to fetch per API request (default: 1000)
+        :return: Generator yielding LabellerrFile instances
         """
-        print(f"Fetching files for dataset: {self.dataset_id}")
-        file_ids = []
+        logging.info(f"Fetching files for dataset: {self.dataset_id}")
         next_search_after = None  # Start with None for first page
 
         while True:
@@ -205,15 +206,18 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             response = self.client.make_request(
                 "GET", url, extra_headers=None, request_id=unique_id, params=params
             )
-            print(response)
             # Extract files from the response
             files = response.get("response", {}).get("files", [])
 
             # Collect file IDs
-            for file_info in files:
-                file_id = file_info.get("file_id")
-                if file_id:
-                    file_ids.append(file_id)
+            for file_data in files:
+                try:
+                    _file = LabellerrFile.from_file_data(self.client, file_data)
+                    yield _file
+                except LabellerrError as e:
+                    logging.warning(
+                        f"Warning: Failed to create file instance for {file_data.get('file_id')}: {str(e)}"
+                    )
 
             # Get next_search_after for pagination
             next_search_after = response.get("response", {}).get("next_search_after")
@@ -221,23 +225,6 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             # Break if no more pages or no files returned
             if not next_search_after or not files:
                 break
-
-        files = []
-
-        for file_id in file_ids:
-            try:
-                _file = LabellerrFile(
-                    client=self.client,
-                    file_id=file_id,
-                    dataset_id=self.dataset_id,
-                )
-                files.append(_file)
-            except LabellerrError as e:
-                logging.warning(
-                    f"Warning: Failed to create file instance for {file_id}: {str(e)}"
-                )
-
-        return files
 
     def sync_with_connection(
         self,
