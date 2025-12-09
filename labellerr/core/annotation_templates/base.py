@@ -24,8 +24,14 @@ class LabellerrAnnotationTemplate:
 
     """Base class for all Labellerr projects with factory behavior"""
 
-    def __new__(cls, client: "LabellerrClient", annotation_template_id: str):
-        # Validate that the annotation template exists before creating the instance
+    def __new__(cls, client: "LabellerrClient", annotation_template_id: str, **kwargs):
+        # If annotation_template_data is provided in kwargs, use it directly
+        if "annotation_template_data" in kwargs:
+            instance = super().__new__(cls)
+            instance.__annotation_template_data = kwargs["annotation_template_data"]
+            return instance
+
+        # Otherwise, fetch from API
         annotation_template_data = cls.get_annotation_template(
             client, annotation_template_id
         )
@@ -43,9 +49,46 @@ class LabellerrAnnotationTemplate:
         instance.__annotation_template_data = annotation_template_data
         return instance
 
-    def __init__(self, client: "LabellerrClient", annotation_template_id: str):
+    def __init__(
+        self, client: "LabellerrClient", annotation_template_id: str, **kwargs
+    ):
         self.client = client
-        self.__annotation_template_id = annotation_template_id
+        if "annotation_template_data" in kwargs:
+            self.__annotation_template_id = kwargs["annotation_template_data"].get(
+                "template_id"
+            )
+        else:
+            self.__annotation_template_id = annotation_template_id
+
+    @classmethod
+    def from_annotation_template_data(cls, client: "LabellerrClient", **kwargs):
+        """
+        Create a LabellerrAnnotationTemplate instance from annotation template data.
+
+        :param client: LabellerrClient instance
+        :param kwargs: Annotation template fields (template_id, template_name, questions, etc.)
+        :return: Instance of LabellerrAnnotationTemplate
+        """
+        # Validate required fields
+        required_fields = {
+            "template_id",
+            "template_name",
+            "questions",
+            "created_at",
+            "created_by",
+        }
+        missing_fields = required_fields - set(kwargs.keys())
+        if missing_fields:
+            raise ValueError(
+                f"Missing required fields in annotation_template_data: {missing_fields}"
+            )
+
+        # Create instance without calling API - pass annotation_template_data to skip API call
+        return cls(
+            client,
+            annotation_template_id=kwargs.get("template_id"),
+            annotation_template_data=kwargs,
+        )
 
     @property
     def template_name(self):
