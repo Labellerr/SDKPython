@@ -45,6 +45,28 @@ class LabellerrAnnotationTemplate:
 
     def __init__(self, client: "LabellerrClient", annotation_template_id: str):
         self.client = client
-        self.annotation_template_id = annotation_template_id
-        # Use the data already fetched in __new__
-        self.annotation_template_data = self.__annotation_template_data
+        self.__annotation_template_id = annotation_template_id
+
+    @property
+    def template_name(self):
+        return self.__annotation_template_data.get("template_name")
+
+    @property
+    def data_type(self):
+        return self.__annotation_template_data.get("data_type")
+
+    @property
+    def template_id(self):
+        return self.__annotation_template_id
+
+    @property
+    def created_at(self):
+        return self.__annotation_template_data.get("created_at")
+
+    @property
+    def created_by(self):
+        return self.__annotation_template_data.get("created_by")
+
+    @property
+    def questions(self):
+        return self.__annotation_template_data.get("questions")

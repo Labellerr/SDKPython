@@ -1,8 +1,15 @@
 from .base import LabellerrAnnotationTemplate
-from ..schemas.annotation_templates import CreateTemplateParams, QuestionType, Option
+from ..schemas.annotation_templates import (
+    CreateTemplateParams,
+    QuestionType,
+    Option,
+    DatasetDataType,
+)
 from .. import constants
 from ..client import LabellerrClient
 import uuid
+from typing import List
+
 
 __all__ = [
     "LabellerrAnnotationTemplate",
@@ -62,3 +69,25 @@ def create_template(
         client=client,
         annotation_template_id=response.get("response", None).get("template_id"),
     )
+
+
+def list_templates(
+    client: LabellerrClient, data_type: DatasetDataType
+) -> List[LabellerrAnnotationTemplate]:
+    """ """
+    unique_id = str(uuid.uuid4())
+    url = (
+        f"{constants.BASE_URL}/annotations/list_questions_templates?client_id={client.client_id}&data_type={data_type}"
+        f"&uuid={unique_id}"
+    )
+
+    response = client.make_request(
+        "GET",
+        url,
+        extra_headers={"content-type": "application/json"},
+        request_id=unique_id,
+    )
+    return [
+        LabellerrAnnotationTemplate(client, item.get("template_id"))
+        for item in response.get("response", [])
+    ]
