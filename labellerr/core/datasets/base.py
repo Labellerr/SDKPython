@@ -184,7 +184,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         :param page_size: Number of files to fetch per API request (default: 1000)
         :return: Generator yielding LabellerrFile instances
         """
-        print(f"Fetching files for dataset: {self.dataset_id}")
+        logging.info(f"Fetching files for dataset: {self.dataset_id}")
         next_search_after = None  # Start with None for first page
 
         while True:

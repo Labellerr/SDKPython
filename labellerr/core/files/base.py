@@ -117,8 +117,7 @@ class LabellerrFile(metaclass=LabellerrFileMeta):
         # Get the appropriate file class from registry
         file_class = LabellerrFileMeta._registry.get(data_type)
         if file_class is None:
-            # If no specific class, use base LabellerrFile
-            file_class = cls
+            raise LabellerrError(f"Unsupported file type: {data_type}")
 
         # Create instance with file_data
         return file_class(
