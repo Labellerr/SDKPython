@@ -24,7 +24,13 @@ class LabellerrAnnotationTemplate:
 
     """Base class for all Labellerr projects with factory behavior"""
 
-    def __new__(cls, client: "LabellerrClient", annotation_template_id: str, _skip_api_fetch: bool = False, **kwargs):
+    def __new__(
+        cls,
+        client: "LabellerrClient",
+        annotation_template_id: str,
+        _skip_api_fetch: bool = False,
+        **kwargs,
+    ):
         # If skip flag is set, create instance without API call
         if _skip_api_fetch:
             return super().__new__(cls)
@@ -46,11 +52,15 @@ class LabellerrAnnotationTemplate:
         return super().__new__(cls)
 
     def __init__(
-        self, client: "LabellerrClient", annotation_template_id: str, _skip_api_fetch: bool = False, **kwargs
+        self,
+        client: "LabellerrClient",
+        annotation_template_id: str,
+        _skip_api_fetch: bool = False,
+        **kwargs,
     ):
         self.client = client
         self.__annotation_template_id = annotation_template_id
-        
+
         # Set __annotation_template_data from either source
         if "_cached_data" in kwargs:
             # Data provided directly (from factory method)
