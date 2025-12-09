@@ -112,3 +112,7 @@ class LabellerrFile(metaclass=LabellerrFileMeta):
     @property
     def metadata(self):
         return self.__file_data.get("file_metadata", {})
+
+    @property
+    def file_name(self):
+        return self.__file_data.get("file_name", "")

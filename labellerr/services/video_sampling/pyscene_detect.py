@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 from typing import List
@@ -189,22 +188,13 @@ class PySceneDetect(Singleton):
         # Validate input file before processing
         self._validate_video_file(video_path)
 
-        # Extract identifiers from the video path
-        # file_id: Video filename without extension (e.g., "video_123")
-        # dataset_id: Parent directory name (used for organizing outputs)
-        file_id = os.path.splitext(os.path.basename(video_path))[0]
-        dataset_id = os.path.basename(os.path.dirname(video_path))
+        # Extract video filename without extension (e.g., "video_123")
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
 
-        # Create hierarchical output folder structure:
-        # PyScene_detects/
-        #   └── <dataset_id>/
-        #       └── <file_id>/
-        #           ├── frames/          (extracted frame images)
-        #           └── <file_id>_mapping.json  (metadata)
-        base_detect_folder = "PyScene_detects"
-
-        output_folder = os.path.join(base_detect_folder, dataset_id, file_id)
-        frames_folder = os.path.join(output_folder, "frames")
+        # Create output folder structure:
+        # pyscene_detect/  (frames stored directly here)
+        output_folder = "pyscene_detect"
+        os.makedirs(output_folder, exist_ok=True)
 
         try:
             # ================================================================
@@ -212,9 +202,6 @@ class PySceneDetect(Singleton):
             # ================================================================
             print("Detecting scene changes...")
             scenes = detect(video_path, AdaptiveDetector())
-
-            # Create all necessary directories (no error if they already exist)
-            os.makedirs(frames_folder, exist_ok=True)
 
             # ================================================================
             # PHASE 2: Extract frames from detected scenes
@@ -243,9 +230,9 @@ class PySceneDetect(Singleton):
                 try:
                     frame = self._get_frame(video, frame_no)
 
-                    # Save frame with frame number as filename inside frames folder
-                    frame_filename = f"{frame_no}.jpg"
-                    frame_path = os.path.join(frames_folder, frame_filename)
+                    # Save frame with naming pattern: video_name+frame_X.jpg
+                    frame_filename = f"{video_name}+frame_{frame_no}.jpg"
+                    frame_path = os.path.join(output_folder, frame_filename)
                     frame.save(frame_path)
 
                     # Create SceneFrame object
@@ -272,8 +259,8 @@ class PySceneDetect(Singleton):
                     print("Extracting first frame (frame 0)...")
                     frame = self._get_frame(video, 0)
 
-                    frame_filename = "0.jpg"
-                    frame_path = os.path.join(frames_folder, frame_filename)
+                    frame_filename = f"{video_name}+frame_0.jpg"
+                    frame_path = os.path.join(output_folder, frame_filename)
                     frame.save(frame_path)
 
                     # Insert at the beginning of the list
@@ -292,19 +279,16 @@ class PySceneDetect(Singleton):
 
             # Final success message with extraction statistics
             print(
-                f"Successfully extracted {len(scene_frames)} frames to {frames_folder}"
+                f"Successfully extracted {len(scene_frames)} frames to {output_folder}"
             )
 
             # Create result
             result = DetectionResult(
-                file_id=file_id,
+                file_id=video_name,
                 output_folder=output_folder,
                 total_frames=total_frames,
                 selected_frames=scene_frames,
             )
-
-            # Save JSON mapping
-            self._save_json_mapping(result, output_folder, file_id)
 
             return result
 
@@ -340,39 +324,3 @@ class PySceneDetect(Singleton):
             return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         except Exception as e:
             raise FrameExtractionError(f"Error extracting frame {frame_no}: {e}") from e
-
-    def _save_json_mapping(
-        self, result: DetectionResult, output_folder: str, file_id: str
-    ) -> None:
-        """
-        Save JSON mapping of file_id to extracted scenes.
-
-        Args:
-            result: DetectionResult object
-            output_folder: Folder to save the JSON file
-            file_id: Unique identifier for the video
-
-        Raises:
-            PySceneDetectError: If JSON file cannot be saved
-        """
-        try:
-            # Use Pydantic's model_dump
-            result_dict = result.model_dump()
-            result_dict["total_selected_frames"] = len(result.selected_frames)
-
-            json_path = os.path.join(output_folder, f"{file_id}_mapping.json")
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(result_dict, f, indent=2, ensure_ascii=False)
-
-            print(f"JSON mapping saved to: {json_path}")
-        except (IOError, OSError) as e:
-            raise PySceneDetectError(
-                f"Failed to save JSON mapping to {json_path}: {e}"
-            ) from e
-
-
-if __name__ == "__main__":
-    video_path = r"D:\Professional\Labellerr_SDK\SDKPython\labellerr\notebooks\Labellerr_datasets\354681d3-034a-4d66-b070-365f4bd11d8a\2a8d96ca-9161-4dee-ad3b-a5faf301bc6c.mp4"
-
-    detector = PySceneDetect()
-    result = detector.detect_and_extract(video_path)

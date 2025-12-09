@@ -107,7 +107,7 @@ class FFMPEGSceneDetect(Singleton):
     def detect_and_extract(self, video_path: str) -> DetectionResult:
         """
         Extract keyframes from video and save to detects folder structure.
-        Frames are saved with their actual frame numbers (e.g., 5.jpg for frame 5).
+        Frames are saved with pattern: video_name+frame_X.jpg (e.g., video_name+frame_5.jpg for frame 5).
 
         Args:
             video_path: Path to the video file
@@ -170,10 +170,12 @@ class FFMPEGSceneDetect(Singleton):
             # ================================================================
             # Second pass: Extract each I-frame and save with its actual frame number
             # Using actual frame numbers ensures frames are named correctly
-            # (e.g., frame 250 from video → 250.jpg)
+            # (e.g., frame 250 from video → video_name+frame_250.jpg)
             selected_frames = []
             for idx, frame_num in enumerate(frame_numbers, 1):
-                frame_path = os.path.join(frames_folder, f"{frame_num}.jpg")
+                # Save frame with naming pattern: video_name+frame_X.jpg
+                frame_filename = f"{file_id}+frame_{frame_num}.jpg"
+                frame_path = os.path.join(frames_folder, frame_filename)
                 try:
                     self._extract_single_frame(video_path, frame_num, frame_path)
                     selected_frames.append(

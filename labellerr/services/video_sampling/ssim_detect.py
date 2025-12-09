@@ -67,7 +67,7 @@ class SceneFrame(BaseModel):
 
     Attributes:
         frame_path (str): Absolute or relative path to the extracted frame image file.
-                         Example: "SSIM_detects/video_id/frames/250.jpg"
+                         Example: "SSIM_detects/video_id/frames/video_name+frame_250.jpg"
         frame_index (int): The 0-indexed frame number in the source video.
                           Example: 250 means this is the 250th frame of the video.
         ssim_score (float): The SSIM score that triggered this frame extraction.
@@ -236,7 +236,9 @@ class SSIMSceneDetect(Singleton):
             frame_count = 0
 
             # Always save first frame with SSIM score of 1.0 (perfect match with itself)
-            self._save_frame(prev_frame, frame_count, 1.0, scene_frames, frames_folder)
+            self._save_frame(
+                prev_frame, frame_count, 1.0, scene_frames, frames_folder, file_id
+            )
             print("Saved first frame (frame 0)")
 
             # ================================================================
@@ -263,6 +265,7 @@ class SSIMSceneDetect(Singleton):
                             ssim_score,
                             scene_frames,
                             frames_folder,
+                            file_id,
                         )
                         print(
                             f"Saved keyframe {len(scene_frames) - 1} at frame {frame_count} (SSIM: {ssim_score:.3f})"
@@ -351,6 +354,7 @@ class SSIMSceneDetect(Singleton):
         ssim_score: float,
         scene_frames: List[SceneFrame],
         frames_folder: str,
+        file_id: str,
     ) -> None:
         """
         Save a frame to disk and add to scene_frames list.
@@ -361,6 +365,7 @@ class SSIMSceneDetect(Singleton):
             ssim_score: SSIM score that triggered this frame extraction
             scene_frames: List to append SceneFrame object to
             frames_folder: Folder to save the frame
+            file_id: Video filename without extension (for naming pattern)
 
         Raises:
             FrameExtractionError: If frame saving fails
@@ -370,8 +375,8 @@ class SSIMSceneDetect(Singleton):
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(frame_rgb)
 
-            # Save frame with frame number as filename
-            frame_filename = f"{frame_no}.jpg"
+            # Save frame with naming pattern: video_name+frame_X.jpg
+            frame_filename = f"{file_id}+frame_{frame_no}.jpg"
             frame_path = os.path.join(frames_folder, frame_filename)
             pil_image.save(frame_path)
 
