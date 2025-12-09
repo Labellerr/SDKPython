@@ -64,7 +64,6 @@ from labellerr.core.schemas.files import BulkAssignFilesParams, ListFileParams
 from labellerr.core.schemas.projects import (
     CreateLocalExportParams,
     CreateProjectParams,
-    CreateTemplateParams,
     Question,
     RotationConfig,
 )

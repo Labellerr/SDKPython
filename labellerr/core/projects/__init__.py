@@ -1,23 +1,22 @@
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 import requests
-import requests
+
 from labellerr import LabellerrClient
 
 from .. import client_utils, constants, schemas
+from ..annotation_templates import LabellerrAnnotationTemplate
 from ..datasets import LabellerrDataset
 from ..exceptions import LabellerrError
 from .audio_project import AudioProject as LabellerrAudioProject
+from .base import LabellerrProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
 from .image_project import ImageProject as LabellerrImageProject
-from .video_project import VideoProject as LabellerrVideoProject
 from .text_project import TextProject as LabellerrTextProject
-from .base import LabellerrProject
-from ..annotation_templates import LabellerrAnnotationTemplate
-from typing import List
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import ThreadPoolExecutor
+from .video_project import VideoProject as LabellerrVideoProject
 
 __all__ = [
     "LabellerrProject",
