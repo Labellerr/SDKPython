@@ -24,14 +24,12 @@ class LabellerrAnnotationTemplate:
 
     """Base class for all Labellerr projects with factory behavior"""
 
-    def __new__(cls, client: "LabellerrClient", annotation_template_id: str, **kwargs):
-        # If annotation_template_data is provided in kwargs, use it directly
-        if "annotation_template_data" in kwargs:
-            instance = super().__new__(cls)
-            instance.__annotation_template_data = kwargs["annotation_template_data"]
-            return instance
+    def __new__(cls, client: "LabellerrClient", annotation_template_id: str, _skip_api_fetch: bool = False, **kwargs):
+        # If skip flag is set, create instance without API call
+        if _skip_api_fetch:
+            return super().__new__(cls)
 
-        # Otherwise, fetch from API
+        # Otherwise, fetch from API and validate
         annotation_template_data = cls.get_annotation_template(
             client, annotation_template_id
         )
@@ -43,22 +41,26 @@ class LabellerrAnnotationTemplate:
                 f"Annotation template with ID '{annotation_template_id}' does not exist or could not be retrieved."
             )
 
-        # Create the instance only if validation passes
-        instance = super().__new__(cls)
-        # Store the data on the instance to avoid calling API again in __init__
-        instance.__annotation_template_data = annotation_template_data
-        return instance
+        # Pass fetched data to __init__ via kwargs
+        kwargs["_fetched_data"] = annotation_template_data
+        return super().__new__(cls)
 
     def __init__(
-        self, client: "LabellerrClient", annotation_template_id: str, **kwargs
+        self, client: "LabellerrClient", annotation_template_id: str, _skip_api_fetch: bool = False, **kwargs
     ):
         self.client = client
-        if "annotation_template_data" in kwargs:
-            self.__annotation_template_id = kwargs["annotation_template_data"].get(
-                "template_id"
-            )
+        self.__annotation_template_id = annotation_template_id
+        
+        # Set __annotation_template_data from either source
+        if "_cached_data" in kwargs:
+            # Data provided directly (from factory method)
+            self.__annotation_template_data = kwargs["_cached_data"]
+        elif "_fetched_data" in kwargs:
+            # Data fetched in __new__
+            self.__annotation_template_data = kwargs["_fetched_data"]
         else:
-            self.__annotation_template_id = annotation_template_id
+            # Fallback - shouldn't happen in normal usage
+            self.__annotation_template_data = {}
 
     @classmethod
     def from_annotation_template_data(cls, client: "LabellerrClient", **kwargs):
@@ -83,11 +85,12 @@ class LabellerrAnnotationTemplate:
                 f"Missing required fields in annotation_template_data: {missing_fields}"
             )
 
-        # Create instance without calling API - pass annotation_template_data to skip API call
+        # Create instance without API call - explicit flag makes intent clear
         return cls(
             client,
             annotation_template_id=kwargs.get("template_id"),
-            annotation_template_data=kwargs,
+            _skip_api_fetch=True,
+            _cached_data=kwargs,
         )
 
     @property
