@@ -209,9 +209,6 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
 
             # Collect file IDs
             for file_data in files:
-                # file_id = file_data.get("file_id")
-                # if file_id:
-                # file_ids.append(file_id)
                 try:
                     _file = LabellerrFile.from_file_data(self.client, file_data)
                     yield _file
