@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from abc import ABCMeta
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, Generator, TYPE_CHECKING
 
 from .. import constants
 from ..exceptions import InvalidDatasetError, LabellerrError
@@ -175,12 +175,14 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             on_success=on_success,
         )
 
-    def fetch_files(self, page_size: int = 1000) -> List[LabellerrFile]:
+    def fetch_files(
+        self, page_size: int = 1000
+    ) -> Generator[LabellerrFile, None, None]:
         """
         Fetch all files in this dataset as LabellerrFile instances.
 
-        :param page_size: Number of files to fetch per API request (default: 10)
-        :return: List of file IDs
+        :param page_size: Number of files to fetch per API request (default: 1000)
+        :return: Generator yielding LabellerrFile instances
         """
         print(f"Fetching files for dataset: {self.dataset_id}")
         next_search_after = None  # Start with None for first page
