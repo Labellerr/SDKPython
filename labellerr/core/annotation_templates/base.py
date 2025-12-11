@@ -112,7 +112,7 @@ class LabellerrAnnotationTemplate:
         return self.__annotation_template_data.get("data_type")
 
     @property
-    def template_id(self):
+    def annotation_template_id(self):
         return self.__annotation_template_id
 
     @property
