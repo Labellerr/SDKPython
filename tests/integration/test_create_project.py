@@ -30,12 +30,15 @@ def test_annotation_template(client):
     """Get or create a test annotation template for integration tests"""
     # Use an environment variable or skip
     import os
+
     template_id = os.getenv("TEMPLATE_ID") or os.getenv("TEST_TEMPLATE_ID")
     if template_id:
         return LabellerrAnnotationTemplate(
             client=client, annotation_template_id=template_id
         )
-    pytest.skip("TEMPLATE_ID or TEST_TEMPLATE_ID environment variable is required for integration tests")
+    pytest.skip(
+        "TEMPLATE_ID or TEST_TEMPLATE_ID environment variable is required for integration tests"
+    )
 
 
 @pytest.fixture
@@ -175,7 +178,12 @@ class TestCreateProjectIntegration:
         assert "At least one dataset is required" in str(exc_info.value)
 
     def test_create_project_verify_properties(
-        self, client, test_project_params, test_dataset, test_annotation_template, email_id
+        self,
+        client,
+        test_project_params,
+        test_dataset,
+        test_annotation_template,
+        email_id,
     ):
         """Test that created project has correct properties"""
         project = create_project(
@@ -188,7 +196,10 @@ class TestCreateProjectIntegration:
         # Verify project properties
         assert project.project_id is not None
         assert project.data_type == test_project_params.data_type.value
-        assert project.annotation_template_id == test_annotation_template.annotation_template_id
+        assert (
+            project.annotation_template_id
+            == test_annotation_template.annotation_template_id
+        )
         assert project.created_by == (email_id or "test@example.com")
 
 
@@ -242,7 +253,7 @@ class TestListProjectsIntegration:
         initial_count = len(initial_projects)
 
         # Create a new project
-        new_project = create_project(
+        create_project(
             client=client,
             params=test_project_params,
             datasets=[test_dataset],
@@ -258,9 +269,6 @@ class TestListProjectsIntegration:
 
         # Should have one more project
         assert updated_count >= initial_count
-
-        # Verify the new project is in the list
-        project_ids = [p.project_id for p in updated_projects]
         # Note: The new project might not immediately appear in the list
         # depending on the API's consistency model
 
