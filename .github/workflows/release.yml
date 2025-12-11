@@ -176,7 +176,7 @@ jobs:
           EOF
 
           # Bump the version
-          bump2version $BUMP_TYPE
+          bump2version --allow-dirty $BUMP_TYPE
 
           # Get the new version
           NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
