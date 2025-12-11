@@ -72,12 +72,18 @@ class TestCreateProject:
     ):
         """Test that empty datasets list raises LabellerrError"""
         with pytest.raises(LabellerrError) as exc_info:
-            create_project(client, valid_create_project_params, [], mock_annotation_template)
+            create_project(
+                client, valid_create_project_params, [], mock_annotation_template
+            )
 
         assert "At least one dataset is required" in str(exc_info.value)
 
     def test_create_project_dataset_with_no_files(
-        self, client, valid_create_project_params, mock_empty_dataset, mock_annotation_template
+        self,
+        client,
+        valid_create_project_params,
+        mock_empty_dataset,
+        mock_annotation_template,
     ):
         """Test that dataset with no files raises LabellerrError"""
         with pytest.raises(LabellerrError) as exc_info:
@@ -88,10 +94,16 @@ class TestCreateProject:
                 mock_annotation_template,
             )
 
-        assert f"Dataset {mock_empty_dataset.dataset_id} has no files" in str(exc_info.value)
+        assert f"Dataset {mock_empty_dataset.dataset_id} has no files" in str(
+            exc_info.value
+        )
 
     def test_create_project_successful(
-        self, client, valid_create_project_params, mock_dataset, mock_annotation_template
+        self,
+        client,
+        valid_create_project_params,
+        mock_dataset,
+        mock_annotation_template,
     ):
         """Test successful project creation"""
         mock_response = {"response": {"project_id": "new-project-id"}}
@@ -276,12 +288,18 @@ class TestCreateProject:
                 assert payload["rotations"]["client_review_rotation_count"] == 1
 
     def test_create_project_url_construction(
-        self, client, valid_create_project_params, mock_dataset, mock_annotation_template
+        self,
+        client,
+        valid_create_project_params,
+        mock_dataset,
+        mock_annotation_template,
     ):
         """Test that API URL is constructed correctly"""
         mock_response = {"response": {"project_id": "test-project"}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             with patch(
                 "labellerr.core.projects.base.LabellerrProject.get_project",
                 return_value={
@@ -305,12 +323,18 @@ class TestCreateProject:
                 assert "uuid=" in url
 
     def test_create_project_headers_construction(
-        self, client, valid_create_project_params, mock_dataset, mock_annotation_template
+        self,
+        client,
+        valid_create_project_params,
+        mock_dataset,
+        mock_annotation_template,
     ):
         """Test that request headers are constructed correctly"""
         mock_response = {"response": {"project_id": "test-project"}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             with patch(
                 "labellerr.core.projects.base.LabellerrProject.get_project",
                 return_value={
@@ -333,12 +357,18 @@ class TestCreateProject:
                 assert headers["Content-Type"] == "application/json"
 
     def test_create_project_payload_structure(
-        self, client, valid_create_project_params, mock_dataset, mock_annotation_template
+        self,
+        client,
+        valid_create_project_params,
+        mock_dataset,
+        mock_annotation_template,
     ):
         """Test that request payload has correct structure"""
         mock_response = {"response": {"project_id": "test-project"}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             with patch(
                 "labellerr.core.projects.base.LabellerrProject.get_project",
                 return_value={
@@ -399,9 +429,7 @@ class TestListProjects:
         """Test list_projects with a single project"""
         mock_response = {
             "response": {
-                "projects": [
-                    {"project_id": "project-1", "data_type": "image"}
-                ]
+                "projects": [{"project_id": "project-1", "data_type": "image"}]
             }
         }
 
@@ -453,9 +481,21 @@ class TestListProjects:
             with patch(
                 "labellerr.core.projects.base.LabellerrProject.get_project",
                 side_effect=[
-                    {"project_id": "project-1", "data_type": "image", "status_code": 200},
-                    {"project_id": "project-2", "data_type": "video", "status_code": 200},
-                    {"project_id": "project-3", "data_type": "text", "status_code": 200},
+                    {
+                        "project_id": "project-1",
+                        "data_type": "image",
+                        "status_code": 200,
+                    },
+                    {
+                        "project_id": "project-2",
+                        "data_type": "video",
+                        "status_code": 200,
+                    },
+                    {
+                        "project_id": "project-3",
+                        "data_type": "text",
+                        "status_code": 200,
+                    },
                 ],
             ):
                 result = list_projects(client)
@@ -467,7 +507,9 @@ class TestListProjects:
         """Test that list_projects constructs URL correctly"""
         mock_response = {"response": {"projects": []}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             list_projects(client)
 
             # Verify URL
@@ -481,7 +523,9 @@ class TestListProjects:
         """Test that list_projects uses GET method"""
         mock_response = {"response": {"projects": []}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             list_projects(client)
 
             # Verify HTTP method
@@ -493,7 +537,9 @@ class TestListProjects:
         """Test that list_projects sets correct headers"""
         mock_response = {"response": {"projects": []}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             list_projects(client)
 
             # Verify headers
@@ -506,7 +552,9 @@ class TestListProjects:
         """Test that list_projects generates and uses UUID"""
         mock_response = {"response": {"projects": []}}
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             with patch("labellerr.core.projects.uuid.uuid4") as mock_uuid:
                 test_uuid = "test-uuid-12345"
                 mock_uuid.return_value = test_uuid
