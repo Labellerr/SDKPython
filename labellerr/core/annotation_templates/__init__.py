@@ -74,10 +74,16 @@ def create_template(
 def list_templates(
     client: LabellerrClient, data_type: DatasetDataType
 ) -> List[LabellerrAnnotationTemplate]:
-    """ """
+    """
+    List all annotation templates for a given data type
+
+    :param client: The client to use for the request.
+    :param data_type: The data type to list templates for.
+    :return: A list of LabellerrAnnotationTemplate instances.
+    """
     unique_id = str(uuid.uuid4())
     url = (
-        f"{constants.BASE_URL}/annotations/list_questions_templates?client_id={client.client_id}&data_type={data_type}"
+        f"{constants.BASE_URL}/annotations/list_questions_templates?client_id={client.client_id}&data_type={data_type.value}"
         f"&uuid={unique_id}"
     )
 
@@ -88,6 +94,6 @@ def list_templates(
         request_id=unique_id,
     )
     return [
-        LabellerrAnnotationTemplate(client, item.get("template_id"))
+        LabellerrAnnotationTemplate.from_annotation_template_data(client, **item)
         for item in response.get("response", [])
     ]

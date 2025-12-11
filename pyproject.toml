@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "labellerr-sdk"
-version = "1.0.0"
+version = "1.1.0"
 description = "Python SDK for Labellerr API"
 readme = "README.md"
 license = {text = "MIT"}
@@ -49,6 +49,12 @@ dev = [
     "python-dotenv>=1.0.0",
     "build>=0.3.0",
 ]
+mcp = [
+    "mcp>=1.0.0",
+    "anthropic>=0.18.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+]
 docs = [
     "sphinx>=4.0.0",
     "sphinx-rtd-theme>=0.5.0",
@@ -56,11 +62,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tensormatics/SDKPython"
-Documentation = "https://github.com/tensormatics/SDKPython#readme"
-Repository = "https://github.com/tensormatics/SDKPython"
-"Bug Tracker" = "https://github.com/tensormatics/SDKPython/issues"
-Changelog = "https://github.com/tensormatics/SDKPython/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Labellerr/SDKPython"
+Documentation = "https://github.com/Labellerr/SDKPython#readme"
+Repository = "https://github.com/Labellerr/SDKPython"
+"Bug Tracker" = "https://github.com/Labellerr/SDKPython/issues"
+Changelog = "https://github.com/Labellerr/SDKPython/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["labellerr*"]

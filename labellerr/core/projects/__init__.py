@@ -1,6 +1,7 @@
 import json
 import uuid
 
+import requests
 from labellerr import LabellerrClient
 
 from .. import client_utils, constants, schemas
@@ -14,6 +15,7 @@ from .text_project import TextProject as LabellerrTextProject
 from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List
+from concurrent.futures import ThreadPoolExecutor
 
 __all__ = [
     "LabellerrProject",
@@ -92,26 +94,20 @@ def list_projects(client: "LabellerrClient"):
         request_id=unique_id,
     )
 
-    # Handle different response formats
-    if isinstance(response, list):
-        # Response is directly a list of projects
-        projects = response
-    elif isinstance(response, dict) and "response" in response:
-        # Response is wrapped in a response object
-        inner_response = response["response"]
-        if isinstance(inner_response, list):
-            # Inner response is directly a list
-            projects = inner_response
-        elif isinstance(inner_response, dict):
-            # Inner response is a dict with projects key
-            projects = inner_response.get("projects", [])
-        else:
-            projects = []
-    else:
-        # Fallback to empty list
-        projects = []
+    def _instantiate_project(project_data):
+        try:
+            project = LabellerrProject(client, project_id=project_data["project_id"])
+            return project
+        except requests.exceptions.RetryError:  # Handling Dangling projects
+            return None
+        except LabellerrError:  # Handling Non-migrated projects
+            return None
 
-    return [
-        LabellerrProject(client, project_id=project["project_id"])
-        for project in projects
-    ]
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        projects = [
+            p
+            for p in executor.map(_instantiate_project, response["response"])
+            if p is not None
+        ]
+
+    return projects
