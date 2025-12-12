@@ -16,9 +16,6 @@ from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import create_project, list_projects
 from labellerr.core.projects.base import LabellerrProject
-from labellerr.core.exceptions import LabellerrError
-from labellerr.core.projects import create_project, list_projects
-from labellerr.core.projects.base import LabellerrProject
 from labellerr.core.schemas import CreateProjectParams, DatasetDataType, RotationConfig
 
 # Load environment variables from .env file
@@ -36,30 +33,30 @@ def validate_project_response(project, context=""):
     prefix = f"{context}: " if context else ""
 
     assert project is not None, f"{prefix}Project object is None"
-    assert isinstance(project, LabellerrProject), (
-        f"{prefix}Expected LabellerrProject instance, got {type(project)}"
-    )
+    assert isinstance(
+        project, LabellerrProject
+    ), f"{prefix}Expected LabellerrProject instance, got {type(project)}"
 
     # Validate required attributes exist
     required_attrs = ["project_id", "data_type"]
     for attr in required_attrs:
-        assert hasattr(project, attr), (
-            f"{prefix}Project missing required attribute '{attr}'"
-        )
+        assert hasattr(
+            project, attr
+        ), f"{prefix}Project missing required attribute '{attr}'"
 
     # Validate project_id
     assert project.project_id is not None, f"{prefix}Project ID is None"
-    assert isinstance(project.project_id, str), (
-        f"{prefix}Expected project_id to be str, got {type(project.project_id)}"
-    )
+    assert isinstance(
+        project.project_id, str
+    ), f"{prefix}Expected project_id to be str, got {type(project.project_id)}"
     assert len(project.project_id) > 0, f"{prefix}Project ID is empty string"
 
     # Validate data_type if present
     if project.data_type is not None:
         valid_types = ["image", "video", "audio", "document", "text"]
-        assert project.data_type in valid_types, (
-            f"{prefix}Invalid data type '{project.data_type}'. Expected one of {valid_types}"
-        )
+        assert (
+            project.data_type in valid_types
+        ), f"{prefix}Invalid data type '{project.data_type}'. Expected one of {valid_types}"
 
 
 @pytest.fixture
@@ -72,7 +69,9 @@ def client():
     client_id = os.getenv("CLIENT_ID")
 
     if not all([api_key, api_secret, client_id]):
-        pytest.skip("Integration tests require API_KEY, API_SECRET, and CLIENT_ID environment variables")
+        pytest.skip(
+            "Integration tests require API_KEY, API_SECRET, and CLIENT_ID environment variables"
+        )
 
     return LabellerrClient(api_key, api_secret, client_id)
 
@@ -151,7 +150,9 @@ def create_test_project_params(
 @pytest.fixture
 def test_project_params(email_id, default_rotation_config):
     """Create test project parameters with unique name"""
-    return create_test_project_params("Project", email_id, rotations=default_rotation_config)
+    return create_test_project_params(
+        "Project", email_id, rotations=default_rotation_config
+    )
 
 
 @pytest.mark.integration
@@ -176,7 +177,9 @@ class TestCreateProjectIntegration:
         except LabellerrError as e:
             pytest.fail(f"Project creation failed with LabellerrError: {e}")
         except Exception as e:
-            pytest.fail(f"Project creation failed with unexpected error: {type(e).__name__}: {e}")
+            pytest.fail(
+                f"Project creation failed with unexpected error: {type(e).__name__}: {e}"
+            )
 
     def test_create_project_with_ai(
         self, client, test_dataset, test_annotation_template, email_id
@@ -206,13 +209,22 @@ class TestCreateProjectIntegration:
         except LabellerrError as e:
             pytest.fail(f"AI project creation failed with LabellerrError: {e}")
         except Exception as e:
-            pytest.fail(f"AI project creation failed with unexpected error: {type(e).__name__}: {e}")
+            pytest.fail(
+                f"AI project creation failed with unexpected error: {type(e).__name__}: {e}"
+            )
 
     def test_create_project_image_type(
-        self, client, test_dataset, test_annotation_template, email_id, default_rotation_config
+        self,
+        client,
+        test_dataset,
+        test_annotation_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test creating an image project"""
-        params = create_test_project_params("Image", email_id, rotations=default_rotation_config)
+        params = create_test_project_params(
+            "Image", email_id, rotations=default_rotation_config
+        )
 
         project = create_project(
             client=client,
@@ -294,13 +306,17 @@ class TestCreateProjectIntegration:
                 f"got {project.annotation_template_id}"
             )
             expected_creator = email_id or "test@example.com"
-            assert project.created_by == expected_creator, (
-                f"Creator mismatch: expected {expected_creator}, got {project.created_by}"
-            )
+            assert (
+                project.created_by == expected_creator
+            ), f"Creator mismatch: expected {expected_creator}, got {project.created_by}"
         except LabellerrError as e:
-            pytest.fail(f"Project property verification failed with LabellerrError: {e}")
+            pytest.fail(
+                f"Project property verification failed with LabellerrError: {e}"
+            )
         except Exception as e:
-            pytest.fail(f"Project property verification failed: {type(e).__name__}: {e}")
+            pytest.fail(
+                f"Project property verification failed: {type(e).__name__}: {e}"
+            )
 
 
 @pytest.mark.integration
@@ -315,9 +331,7 @@ class TestListProjectsIntegration:
 
             # Validate response structure
             assert projects is not None, "list_projects returned None"
-            assert isinstance(projects, list), (
-                f"Expected list, got {type(projects)}"
-            )
+            assert isinstance(projects, list), f"Expected list, got {type(projects)}"
 
             # Validate each project in the list
             for idx, project in enumerate(projects):
@@ -325,7 +339,9 @@ class TestListProjectsIntegration:
         except LabellerrError as e:
             pytest.fail(f"Listing projects failed with LabellerrError: {e}")
         except Exception as e:
-            pytest.fail(f"Listing projects failed with unexpected error: {type(e).__name__}: {e}")
+            pytest.fail(
+                f"Listing projects failed with unexpected error: {type(e).__name__}: {e}"
+            )
 
     def test_list_projects_returns_labellerr_project_objects(self, client):
         """Test that list_projects returns LabellerrProject objects"""
@@ -334,19 +350,19 @@ class TestListProjectsIntegration:
 
             assert isinstance(projects, list), f"Expected list, got {type(projects)}"
             for idx, project in enumerate(projects):
-                assert isinstance(project, LabellerrProject), (
-                    f"Project at index {idx} is not LabellerrProject: {type(project)}"
-                )
+                assert isinstance(
+                    project, LabellerrProject
+                ), f"Project at index {idx} is not LabellerrProject: {type(project)}"
                 # Verify basic properties exist
-                assert hasattr(project, "project_id"), (
-                    f"Project at index {idx} missing 'project_id' attribute"
-                )
-                assert hasattr(project, "data_type"), (
-                    f"Project at index {idx} missing 'data_type' attribute"
-                )
-                assert hasattr(project, "annotation_template_id"), (
-                    f"Project at index {idx} missing 'annotation_template_id' attribute"
-                )
+                assert hasattr(
+                    project, "project_id"
+                ), f"Project at index {idx} missing 'project_id' attribute"
+                assert hasattr(
+                    project, "data_type"
+                ), f"Project at index {idx} missing 'data_type' attribute"
+                assert hasattr(
+                    project, "annotation_template_id"
+                ), f"Project at index {idx} missing 'annotation_template_id' attribute"
         except LabellerrError as e:
             pytest.fail(f"Test failed with LabellerrError: {e}")
         except Exception as e:
@@ -360,15 +376,17 @@ class TestListProjectsIntegration:
             if len(projects) > 0:
                 # Test first project has required attributes
                 project = projects[0]
-                assert project.project_id is not None, "First project has None project_id"
-                assert isinstance(project.project_id, str), (
-                    f"Expected project_id to be str, got {type(project.project_id)}"
-                )
+                assert (
+                    project.project_id is not None
+                ), "First project has None project_id"
+                assert isinstance(
+                    project.project_id, str
+                ), f"Expected project_id to be str, got {type(project.project_id)}"
                 # Data type should be one of the valid types
                 valid_types = ["image", "video", "audio", "document", "text"]
-                assert project.data_type in valid_types, (
-                    f"Invalid data type '{project.data_type}'. Expected one of {valid_types}"
-                )
+                assert (
+                    project.data_type in valid_types
+                ), f"Invalid data type '{project.data_type}'. Expected one of {valid_types}"
         except LabellerrError as e:
             pytest.fail(f"Test failed with LabellerrError: {e}")
         except Exception as e:
@@ -402,7 +420,9 @@ class TestListProjectsIntegration:
 
                 # Check if the created project is in the updated list
                 updated_projects = list_projects(client)
-                project_found = any(p.project_id == created_project_id for p in updated_projects)
+                project_found = any(
+                    p.project_id == created_project_id for p in updated_projects
+                )
 
                 if project_found:
                     break
@@ -410,6 +430,7 @@ class TestListProjectsIntegration:
                 if attempt < max_retries - 1:
                     # Not last attempt, will retry
                     import warnings
+
                     warnings.warn(
                         f"Attempt {attempt + 1}/{max_retries}: Project {created_project_id} "
                         f"not found in list of {len(updated_projects)} projects. Retrying..."
@@ -420,9 +441,11 @@ class TestListProjectsIntegration:
                 # Project still not found - could be pagination issue
                 # Try to retrieve the project directly to confirm it exists
                 try:
-                    retrieved_project = LabellerrProject(client, project_id=created_project_id)
+                    # Attempt to retrieve the project directly
+                    LabellerrProject(client, project_id=created_project_id)
                     # Project exists but not in list - likely pagination issue
                     import warnings
+
                     warnings.warn(
                         f"Project {created_project_id} exists (can be retrieved directly) "
                         f"but not found in list_projects() response. This may indicate pagination "
@@ -462,14 +485,21 @@ class TestCreateProjectEdgeCases:
     """Integration tests for edge cases and error handling"""
 
     def test_create_project_long_name(
-        self, client, test_dataset, test_annotation_template, email_id, default_rotation_config
+        self,
+        client,
+        test_dataset,
+        test_annotation_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test creating project with maximum allowed name length (50 chars)"""
         timestamp = int(time.time())
         # API limit is 50 characters, so create a name at the limit
         long_name = f"SDK_Test_{'A' * 30}_{timestamp}"[:50]
 
-        params = create_test_project_params("", email_id, rotations=default_rotation_config)
+        params = create_test_project_params(
+            "", email_id, rotations=default_rotation_config
+        )
         params.project_name = long_name  # Override with long name
 
         project = create_project(
@@ -483,13 +513,20 @@ class TestCreateProjectEdgeCases:
         assert project.project_id is not None
 
     def test_create_project_special_characters_in_name(
-        self, client, test_dataset, test_annotation_template, email_id, default_rotation_config
+        self,
+        client,
+        test_dataset,
+        test_annotation_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test creating project with special characters in name"""
         timestamp = int(time.time())
         special_name = f"SDK_Test-Project_2024_{timestamp}"
 
-        params = create_test_project_params("", email_id, rotations=default_rotation_config)
+        params = create_test_project_params(
+            "", email_id, rotations=default_rotation_config
+        )
         params.project_name = special_name  # Override with special name
 
         project = create_project(
@@ -503,10 +540,17 @@ class TestCreateProjectEdgeCases:
         assert project.project_id is not None
 
     def test_create_project_minimum_rotations(
-        self, client, test_dataset, test_annotation_template, email_id, default_rotation_config
+        self,
+        client,
+        test_dataset,
+        test_annotation_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test creating project with minimum rotation counts (1)"""
-        params = create_test_project_params("MinRotation", email_id, rotations=default_rotation_config)
+        params = create_test_project_params(
+            "MinRotation", email_id, rotations=default_rotation_config
+        )
 
         project = create_project(
             client=client,
@@ -564,7 +608,12 @@ class TestProjectWorkflow:
             pytest.fail(f"Test failed with unexpected error: {type(e).__name__}: {e}")
 
     def test_create_multiple_projects(
-        self, client, test_dataset, test_annotation_template, email_id, default_rotation_config
+        self,
+        client,
+        test_dataset,
+        test_annotation_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test creating multiple projects in sequence"""
         try:
@@ -586,17 +635,19 @@ class TestProjectWorkflow:
                 )
 
                 assert project is not None, f"Project {i} creation returned None"
-                assert project.project_id is not None, f"Project {i} has None project_id"
+                assert (
+                    project.project_id is not None
+                ), f"Project {i} has None project_id"
                 created_projects.append(project)
                 time.sleep(1)  # Small delay between creations
 
             # Verify all projects were created
-            assert len(created_projects) == 3, (
-                f"Expected 3 projects, got {len(created_projects)}"
-            )
-            assert all(p.project_id is not None for p in created_projects), (
-                "Some projects have None project_id"
-            )
+            assert (
+                len(created_projects) == 3
+            ), f"Expected 3 projects, got {len(created_projects)}"
+            assert all(
+                p.project_id is not None for p in created_projects
+            ), "Some projects have None project_id"
 
             # Verify all project IDs are unique
             project_ids = [p.project_id for p in created_projects]
