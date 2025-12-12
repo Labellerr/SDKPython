@@ -76,7 +76,9 @@ def create_project(
 
     # Validate response structure before accessing nested keys
     if not isinstance(response, dict):
-        raise LabellerrError(f"Invalid API response type: expected dict, got {type(response)}")
+        raise LabellerrError(
+            f"Invalid API response type: expected dict, got {type(response)}"
+        )
 
     if "response" not in response:
         raise LabellerrError(
@@ -120,7 +122,9 @@ def list_projects(client: "LabellerrClient"):
 
     # Validate response structure before accessing nested keys
     if not isinstance(response, dict):
-        raise LabellerrError(f"Invalid API response type: expected dict, got {type(response)}")
+        raise LabellerrError(
+            f"Invalid API response type: expected dict, got {type(response)}"
+        )
 
     if "response" not in response:
         raise LabellerrError(

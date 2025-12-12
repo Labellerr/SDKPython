@@ -6,13 +6,11 @@ using mocks and fixtures to avoid external API calls.
 """
 
 import json
-import uuid
 from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import ValidationError
 
-from labellerr.client import LabellerrClient
 from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
