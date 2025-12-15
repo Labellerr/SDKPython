@@ -48,3 +48,31 @@ def test_create_project(create_project_fixture):
 
     assert project.project_id is not None
     assert isinstance(project.project_id, str)
+
+
+def test_archive_and_delete_project(create_project_fixture):
+
+    project = create_project_fixture
+    assert project.project_id is not None
+
+    # 1. Archive
+    print(f"Archiving project {project.project_id}...")
+    try:
+        project.archive()
+    except Exception as e:
+        pytest.fail(f"Failed to archive project: {e}")
+
+    # 2. Unarchive (test the alias)
+    print(f"Unarchiving project {project.project_id}...")
+    try:
+        project.unarchive()
+    except Exception as e:
+        pytest.fail(f"Failed to unarchive project: {e}")
+
+    # 3. Archive again (to test delete on archived project if valid, or just normal delete)
+    # Let's delete it while active
+    print(f"Deleting project {project.project_id}...")
+    try:
+        project.delete()
+    except Exception as e:
+        pytest.fail(f"Failed to delete project: {e}")

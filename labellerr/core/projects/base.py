@@ -643,3 +643,64 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             "POST", url, extra_headers={"Content-Type": "application/json"}
         )
         return response.get("response")
+
+    def archive(self, unarchive=False):
+        """
+        Archives or unarchives the project.
+
+        :param unarchive: If True, unarchives the project. Default is False (archive).
+        :return: Response from the server.
+        :raises LabellerrError: If the operation fails.
+        """
+        unique_id = str(uuid.uuid4())
+        action = "unarchive" if unarchive else "archive"
+        url = f"{constants.BASE_URL}/projects/{action}?client_id={self.client.client_id}&uuid={unique_id}"
+
+        payload = json.dumps({"project_id": self.project_id})
+        
+        headers = {"content-type": "application/json"}
+        if self.client.api_key:
+            headers["email_id"] = self.client.api_key
+
+        return self.client.make_request(
+            "POST",
+            url,
+            extra_headers=headers,
+            request_id=unique_id,
+            data=payload,
+        )
+
+
+    def unarchive(self):
+        """
+        Unarchives the project.
+        Alias for archive(unarchive=True).
+
+        :return: Response from the server.
+        :raises LabellerrError: If the operation fails.
+        """
+        return self.archive(unarchive=True)
+
+
+    def delete(self):
+        """
+        Deletes the project.
+
+        :return: Response from the server.
+        :raises LabellerrError: If the operation fails.
+        """
+        unique_id = str(uuid.uuid4())
+
+        url = f"{constants.BASE_URL}/projects/project/{self.project_id}?client_id={self.client.client_id}&uuid={unique_id}"
+        
+
+        headers = {}
+        if self.client.api_key:
+            headers["email_id"] = self.client.api_key
+
+        return self.client.make_request(
+            "DELETE",
+            url,
+            extra_headers=headers,
+            request_id=unique_id,
+        )
