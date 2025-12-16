@@ -504,22 +504,14 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :raises LabellerrError: If the request fails
         """
         request_uuid = client_utils.generate_request_id()
-        try:
-            url = f"{constants.BASE_URL}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
-            result = self.client.make_request(
-                "GET",
-                url,
-                extra_headers={"Content-Type": "application/json"},
-                request_id=request_uuid,
-            )
-            return json.dumps(result, indent=2)
+        url = f"{constants.BASE_URL}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
 
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to list exports: {str(e)}")
-            raise
-        except Exception as e:
-            logging.error(f"Unexpected error listing exports: {str(e)}")
-            raise
+        return self.client.make_request(
+            "GET",
+            url,
+            extra_headers={"Content-Type": "application/json"},
+            request_id=request_uuid,
+        )
 
     def check_export_status(self, report_ids: list[str]):
         request_uuid = client_utils.generate_request_id()
