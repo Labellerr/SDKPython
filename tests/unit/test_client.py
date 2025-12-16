@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import create_project
-from labellerr.core.projects.image_project import ImageProject
 from labellerr.core.users.base import LabellerrUsers
 from labellerr.core.schemas.projects import CreateProjectParams, RotationConfig
 from labellerr.core.annotation_templates import LabellerrAnnotationTemplate

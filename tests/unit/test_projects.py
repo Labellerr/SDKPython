@@ -11,23 +11,27 @@ class TestListExports:
     """Test cases for list_exports method"""
 
     def test_list_exports_returns_api_response(self, project):
-        """Test that list_exports returns the API response directly"""
+        """Test that list_exports returns the API response correctly"""
         mock_response = {
-            "response": [
-                {"report_id": "export-123", "status": "completed"},
-                {"report_id": "export-456", "status": "pending"},
-            ]
+            "response": {
+                "completed": [
+                    {"report_id": "export-123", "status": "completed"},
+                ],
+                "inProgress": [
+                    {"report_id": "export-456", "status": "pending"},
+                ],
+            }
         }
 
         with patch.object(project.client, "make_request", return_value=mock_response):
             result = project.list_exports()
 
-            assert result == mock_response
-            assert len(result["response"]) == 2
+            assert result["completed"] == mock_response["response"]["completed"]
+            assert result["in_progress"] == mock_response["response"]["inProgress"]
 
     def test_list_exports_calls_correct_endpoint(self, project):
         """Test that list_exports calls the correct API endpoint with proper parameters"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"completed": [], "inProgress": []}}
 
         with patch.object(
             project.client, "make_request", return_value=mock_response
@@ -52,9 +56,10 @@ class TestListExports:
 
     def test_list_exports_empty_response(self, project):
         """Test list_exports handles empty exports list"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"completed": [], "inProgress": []}}
 
         with patch.object(project.client, "make_request", return_value=mock_response):
             result = project.list_exports()
 
-            assert result["response"] == []
+            assert result["completed"] == []
+            assert result["in_progress"] == []
