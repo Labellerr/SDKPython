@@ -1,3 +1,4 @@
+from typing import Dict
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from enum import Enum
@@ -22,3 +23,7 @@ class CreateExportParams(BaseModel):
         default=None,
         description="Unix Timestamp in milliseconds to filter files to be exported based on last updated time",
     )
+
+class ExportsListResponse(BaseModel):
+    completed: List[Dict] = Field(default=[])
+    in_progress: List[Dict] = Field(default=[])

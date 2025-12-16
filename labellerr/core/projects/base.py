@@ -500,18 +500,22 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
         Lists all exports for the project.
 
-        :return: List of exports
+        :return: ExportsListResponse
         :raises LabellerrError: If the request fails
         """
         request_uuid = client_utils.generate_request_id()
         url = f"{constants.BASE_URL}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
 
-        return self.client.make_request(
+        response = self.client.make_request(
             "GET",
             url,
             extra_headers={"Content-Type": "application/json"},
             request_id=request_uuid,
         )
+        return schemas.ExportsListResponse(
+            completed=response.get("response", {}).get("completed", []),
+            in_progress=response.get("response", {}).get("inProgress", []),
+        ).model_dump()
 
     def check_export_status(self, report_ids: list[str]):
         request_uuid = client_utils.generate_request_id()

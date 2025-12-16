@@ -5,23 +5,6 @@ Unit tests for Labellerr project functionality.
 import pytest
 from unittest.mock import patch
 
-from labellerr.core.projects.image_project import ImageProject
-
-
-@pytest.fixture
-def project(client):
-    """Create a test project instance without making API calls"""
-    project_data = {
-        "project_id": "test_project_id",
-        "data_type": "image",
-        "attached_datasets": [],
-    }
-    proj = ImageProject.__new__(ImageProject)
-    proj.client = client
-    proj._LabellerrProject__project_id_input = "test_project_id"
-    proj._LabellerrProject__project_data = project_data
-    return proj
-
 
 @pytest.mark.unit
 class TestListExports:
@@ -75,7 +58,3 @@ class TestListExports:
             result = project.list_exports()
 
             assert result["response"] == []
-
-
-if __name__ == "__main__":
-    pytest.main()

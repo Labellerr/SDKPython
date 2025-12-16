@@ -19,23 +19,6 @@ from unittest.mock import Mock, patch
 
 
 @pytest.fixture
-def project(client):
-    """Create a test project instance without making API calls"""
-    # Create a mock ImageProject instance directly, bypassing the metaclass factory
-    project_data = {
-        "project_id": "test_project_id",
-        "data_type": "image",
-        "attached_datasets": [],
-    }
-    # Use __new__ to create instance without calling __init__ through metaclass
-    proj = ImageProject.__new__(ImageProject)
-    proj.client = client
-    proj._LabellerrProject__project_id_input = "test_project_id"
-    proj._LabellerrProject__project_data = project_data
-    return proj
-
-
-@pytest.fixture
 def users(client):
     """Create a test users instance with client reference"""
     users_instance = LabellerrUsers(client)
