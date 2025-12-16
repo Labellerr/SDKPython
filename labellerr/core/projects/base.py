@@ -512,10 +512,16 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             extra_headers={"Content-Type": "application/json"},
             request_id=request_uuid,
         )
+
+        if not response or "response" not in response:
+            raise LabellerrError("Invalid response from list exports API")
+
+        response_data = response.get("response", {})
+
         return schemas.ExportsListResponse(
-            completed=response.get("response", {}).get("completed", []),
-            in_progress=response.get("response", {}).get("inProgress", []),
-        ).model_dump()
+            completed=response_data.get("completed", []),
+            in_progress=response_data.get("inProgress", []),
+        )
 
     def check_export_status(self, report_ids: list[str]):
         request_uuid = client_utils.generate_request_id()
