@@ -481,12 +481,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         export_config_dict = export_config.model_dump()
         export_config_dict.update(
             {
-                "export_destination": schemas.ExportDestination.LOCAL,
-                "question_ids": ["all"],
+                "export_destination": schemas.ExportDestination.LOCAL.value
             }
         )
 
-        payload = export_config_dict
+        payload = json.dumps(export_config_dict)
 
         response = self.client.make_request(
             "POST",
