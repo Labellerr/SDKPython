@@ -18,3 +18,4 @@ class CreateExportParams(BaseModel):
     export_destination: ExportDestination = Field(default=ExportDestination.LOCAL)
     connection_id: Optional[str] = None
     export_folder_path: Optional[str] = None
+    updated_after_timestamp: Optional[int] = None

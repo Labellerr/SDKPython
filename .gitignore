@@ -30,3 +30,4 @@ download
 labellerr/__pycache__/
 env.*
 claude.md
+.history/
