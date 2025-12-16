@@ -8,7 +8,7 @@ including list_exports, create_export, and other project operations.
 import json
 import pytest
 import requests
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 
 from labellerr.core.projects.image_project import ImageProject
 from labellerr.core.exceptions import LabellerrError
