@@ -477,10 +477,16 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
 
         unique_id = client_utils.generate_request_id()
-        export_config.export_destination = schemas.ExportDestination.LOCAL
-        export_config.question_ids = ["all"]
 
-        payload = json.dumps(export_config.model_dump())
+        export_config_dict = export_config.model_dump()
+        export_config_dict.update(
+            {
+                "export_destination": schemas.ExportDestination.LOCAL,
+                "question_ids": ["all"],
+            }
+        )
+
+        payload = export_config_dict
 
         response = self.client.make_request(
             "POST",
