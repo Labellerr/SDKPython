@@ -467,7 +467,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             report_id = response.get("response", {}).get("report_id")
             return Export(report_id=report_id, project=self)
 
-    def create_local_export(self, export_config):
+    def create_local_export(self, export_config: schemas.CreateExportParams):
         """
         Creates a local export with the given configuration.
 
@@ -475,13 +475,12 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :return: Export instance with report_id and status tracking
         :raises LabellerrError: If the export creation fails
         """
-        # Validate export config using client_utils
-        client_utils.validate_export_config(export_config)
 
         unique_id = client_utils.generate_request_id()
-        export_config.update({"export_destination": "local", "question_ids": ["all"]})
+        export_config.export_destination = schemas.ExportDestination.LOCAL
+        export_config.question_ids = ["all"]
 
-        payload = json.dumps(export_config)
+        payload = json.dumps(export_config.model_dump())
 
         response = self.client.make_request(
             "POST",

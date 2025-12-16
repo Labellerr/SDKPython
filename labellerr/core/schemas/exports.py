@@ -16,6 +16,7 @@ class CreateExportParams(BaseModel):
     export_description: str = Field(min_length=1)
     export_format: str = Field(min_length=1)
     statuses: List[str] = Field(min_length=1)
+    question_ids: List[str] = Field(default=["all"])
     export_destination: ExportDestination = Field(default=ExportDestination.LOCAL)
     connection_id: Optional[str] = None
     export_folder_path: Optional[str] = None
