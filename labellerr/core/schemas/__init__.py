@@ -73,7 +73,11 @@ from labellerr.core.schemas.autolabel import (
 )
 
 # Export schemas
-from labellerr.core.schemas.exports import CreateExportParams, ExportDestination
+from labellerr.core.schemas.exports import (
+    CreateExportParams,
+    ExportDestination,
+    ExportsListResponse,
+)
 
 
 # Export annotation templates
@@ -132,6 +136,7 @@ __all__ = [
     # Export schemas
     "CreateExportParams",
     "ExportDestination",
+    "ExportsListResponse",
     # Annotation templates schemas
     "AnnotationQuestion",
     "Option",
