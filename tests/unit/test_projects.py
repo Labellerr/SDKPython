@@ -47,7 +47,7 @@ class TestListExports:
             with pytest.raises(LabellerrError) as exc_info:
                 project.list_exports()
 
-            assert "Invalid response" in str(exc_info.value)
+            assert "No response received from list exports API" in str(exc_info.value)
 
     def test_list_exports_raises_error_when_response_key_missing(self, project):
         """Test that list_exports raises LabellerrError when 'response' key is missing"""
@@ -57,7 +57,9 @@ class TestListExports:
             with pytest.raises(LabellerrError) as exc_info:
                 project.list_exports()
 
-            assert "Invalid response" in str(exc_info.value)
+            assert "List exports API failed: something went wrong" in str(
+                exc_info.value
+            )
 
     def test_list_exports_handles_missing_optional_fields(self, project):
         """Test that list_exports handles response with missing optional fields gracefully"""
