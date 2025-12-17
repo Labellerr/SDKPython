@@ -480,9 +480,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         export_config_dict = export_config.model_dump()
         export_config_dict.update(
-            {
-                "export_destination": schemas.ExportDestination.LOCAL.value
-            }
+            {"export_destination": schemas.ExportDestination.LOCAL.value}
         )
 
         payload = json.dumps(export_config_dict)
@@ -515,11 +513,15 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             url,
             request_id=request_uuid,
         )
-        if not response:  
-            raise LabellerrError(f"No response received from list exports API (request_id: {request_uuid})")  
-        if "response" not in response:  
-            error_msg = response.get("error", "Unknown error")  
-            raise LabellerrError(f"List exports API failed: {error_msg} (request_id: {request_uuid})") 
+        if not response:
+            raise LabellerrError(
+                f"No response received from list exports API (request_id: {request_uuid})"
+            )
+        if "response" not in response:
+            error_msg = response.get("error", "Unknown error")
+            raise LabellerrError(
+                f"List exports API failed: {error_msg} (request_id: {request_uuid})"
+            )
         response_data = response.get("response", {})
 
         return schemas.ExportsListResponse(
@@ -553,16 +555,14 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                     and status_item.get("export_status") == "Created"
                 ):
                     # Download URL if job completed
-                    download_url = (  
-                        self.__fetch_exports_download_url(
-                            project_id=self.project_id,
-                            uuid=request_uuid,
-                            export_id=status_item["report_id"],
-                            client_id=self.client.client_id,
-                        )
+                    download_url = self.__fetch_exports_download_url(
+                        project_id=self.project_id,
+                        uuid=request_uuid,
+                        export_id=status_item["report_id"],
+                        client_id=self.client.client_id,
                     )
-                    idx = result['status'].index(status_item)
-                    result['status'][idx]["download_url"] = download_url
+                    idx = result["status"].index(status_item)
+                    result["status"][idx]["download_url"] = download_url
 
             return result
 
