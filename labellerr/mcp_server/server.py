@@ -699,10 +699,6 @@ class LabellerrMCPServer:
                     project.check_export_status, args["export_ids"]
                 )
 
-                # Parse JSON string result if needed
-                if isinstance(status_result, str):
-                    status_result = json.loads(status_result)
-
                 result = status_result
 
             elif name == "annotation_download_export":

@@ -513,13 +513,13 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         response = self.client.make_request(
             "GET",
             url,
-            extra_headers={"Content-Type": "application/json"},
             request_id=request_uuid,
         )
-
-        if not response or "response" not in response:
-            raise LabellerrError("Invalid response from list exports API")
-
+        if not response:  
+            raise LabellerrError(f"No response received from list exports API (request_id: {request_uuid})")  
+        if "response" not in response:  
+            error_msg = response.get("error", "Unknown error")  
+            raise LabellerrError(f"List exports API failed: {error_msg} (request_id: {request_uuid})") 
         response_data = response.get("response", {})
 
         return schemas.ExportsListResponse(
@@ -553,7 +553,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                     and status_item.get("export_status") == "Created"
                 ):
                     # Download URL if job completed
-                    download_url = (  # noqa E999 todo check use of that
+                    download_url = (  
                         self.__fetch_exports_download_url(
                             project_id=self.project_id,
                             uuid=request_uuid,
@@ -561,8 +561,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                             client_id=self.client.client_id,
                         )
                     )
+                    idx = result['status'].index(status_item)
+                    result['status'][idx]["download_url"] = download_url
 
-            return json.dumps(result, indent=2)
+            return result
 
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to check export status: {str(e)}")
