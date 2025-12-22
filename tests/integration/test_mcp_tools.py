@@ -7,10 +7,11 @@ Run with: python tests/integration/test_mcp_tools.py
 
 import os
 import sys
-import uuid
 import time
-import pytest
+import uuid
 from pathlib import Path
+
+import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration

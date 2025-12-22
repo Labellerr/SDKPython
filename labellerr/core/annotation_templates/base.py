@@ -1,7 +1,8 @@
+import uuid
+
 from .. import constants
 from ..client import LabellerrClient
 from ..exceptions import InvalidAnnotationTemplateError
-import uuid
 
 
 class LabellerrAnnotationTemplate:

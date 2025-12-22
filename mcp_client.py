@@ -5,16 +5,15 @@ Based on https://modelcontextprotocol.io/docs/develop/build-client
 """
 
 import asyncio
-import sys
 import os
-from typing import Optional
+import sys
 from contextlib import AsyncExitStack
-
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from typing import Optional
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 load_dotenv()  # load environment variables from .env
 

@@ -4,14 +4,13 @@ import json
 import logging
 import uuid
 from abc import ABCMeta
-from typing import Dict, Any, Generator, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Generator
 
 from .. import constants
-from ..exceptions import InvalidDatasetError, LabellerrError
 from ..client import LabellerrClient
-
-from ..files import LabellerrFile
 from ..connectors import LabellerrConnection
+from ..exceptions import InvalidDatasetError, LabellerrError
+from ..files import LabellerrFile
 
 if TYPE_CHECKING:
     from ..projects import LabellerrProject

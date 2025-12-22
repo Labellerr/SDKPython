@@ -35,7 +35,7 @@ jobs:
             - Security concerns
             - Test coverage
             - Code repeatability
-            - Over engineering  
+            - Over engineering
 
             Note: The PR branch is already checked out in the current working directory.
 

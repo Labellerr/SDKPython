@@ -6,42 +6,37 @@ A Model Context Protocol server for the Labellerr platform that uses
 the SDK core module for all API operations.
 """
 
+import asyncio
+import json
+import logging
 import os
 import sys
-import json
-import asyncio
-import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import (
-    Tool,
-    TextContent,
-    Resource,
-)
+from mcp.types import Resource, TextContent, Tool
 
 # Import SDK core modules
 from labellerr.core import LabellerrClient
-from labellerr.core.exceptions import LabellerrError
+from labellerr.core import annotation_templates as template_ops
 from labellerr.core import datasets as dataset_ops
 from labellerr.core import projects as project_ops
-from labellerr.core import annotation_templates as template_ops
+from labellerr.core import schemas
+from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.datasets.base import LabellerrDatasetMeta
 from labellerr.core.datasets.utils import upload_files, upload_folder_files_to_dataset
+from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import LabellerrProject
 from labellerr.core.projects.base import LabellerrProjectMeta
-from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
-from labellerr.core import schemas
+from labellerr.core.schemas.annotation_templates import AnnotationQuestion
 from labellerr.core.schemas.annotation_templates import (
     CreateTemplateParams as TemplateParams,
-    AnnotationQuestion,
-    QuestionType,
-    Option,
 )
+from labellerr.core.schemas.annotation_templates import Option, QuestionType
 
 # Import tool definitions
 try:

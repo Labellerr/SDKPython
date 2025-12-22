@@ -2,8 +2,9 @@
 Unit tests for Labellerr project functionality.
 """
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.schemas import ExportsListResponse

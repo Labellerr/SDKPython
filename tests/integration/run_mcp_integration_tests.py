@@ -13,11 +13,12 @@ Usage:
     python tests/integration/run_mcp_integration_tests.py
 """
 
+import getpass
 import os
 import sys
-import getpass
 from pathlib import Path
-from dotenv import load_dotenv, set_key, find_dotenv
+
+from dotenv import find_dotenv, load_dotenv, set_key
 
 
 def get_project_root():

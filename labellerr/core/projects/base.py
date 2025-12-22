@@ -11,11 +11,10 @@ from typing import Dict
 import requests
 
 from .. import client_utils, constants, schemas
-from ..exceptions import InvalidProjectError, LabellerrError
-from .utils import poll
-from ..exports import Export
-
 from ..client import LabellerrClient
+from ..exceptions import InvalidProjectError, LabellerrError
+from ..exports import Export
+from .utils import poll
 
 
 class LabellerrProjectMeta(ABCMeta):

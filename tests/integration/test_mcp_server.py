@@ -11,8 +11,9 @@ Run these tests with: python tests/integration/run_mcp_integration_tests.py
 """
 
 import os
-import pytest
 import uuid
+
+import pytest
 from dotenv import load_dotenv
 
 # Mark all tests in this module as integration tests
@@ -21,23 +22,23 @@ pytestmark = pytest.mark.integration
 # Skip entire module if SDK core dependencies are not installed
 try:
     from labellerr.core import LabellerrClient
+    from labellerr.core import annotation_templates as template_ops
+    from labellerr.core import constants
     from labellerr.core import datasets as dataset_ops
     from labellerr.core import projects as project_ops
-    from labellerr.core import annotation_templates as template_ops
+    from labellerr.core import schemas
+    from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
     from labellerr.core.datasets import LabellerrDataset
     from labellerr.core.datasets.base import LabellerrDatasetMeta
     from labellerr.core.datasets.utils import upload_folder_files_to_dataset
     from labellerr.core.projects import LabellerrProject
     from labellerr.core.projects.base import LabellerrProjectMeta
-    from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
-    from labellerr.core import schemas
     from labellerr.core.schemas.annotation_templates import (
-        CreateTemplateParams,
         AnnotationQuestion,
-        QuestionType,
+        CreateTemplateParams,
         Option,
+        QuestionType,
     )
-    from labellerr.core import constants
 
     SDK_AVAILABLE = True
 except ImportError as e:
