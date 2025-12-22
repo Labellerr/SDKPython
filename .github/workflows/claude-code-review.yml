@@ -2,9 +2,13 @@ name: Claude Auto Review
 on:
   pull_request:
     types: [opened, synchronize]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
 
 jobs:
   review:
+    if: github.event.pull_request.update_count < 3
     runs-on: ubuntu-latest
     permissions:
       contents: read

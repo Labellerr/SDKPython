@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 import requests
-
 from labellerr import LabellerrClient
 
 from .. import client_utils, constants, schemas
@@ -16,7 +15,10 @@ from .base import LabellerrProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
 from .image_project import ImageProject as LabellerrImageProject
 from .text_project import TextProject as LabellerrTextProject
-from .video_project import VideoProject as LabellerrVideoProject
+from .base import LabellerrProject
+from ..annotation_templates import LabellerrAnnotationTemplate
+from typing import List
+from concurrent.futures import ThreadPoolExecutor
 
 __all__ = [
     "LabellerrProject",

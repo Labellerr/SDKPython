@@ -39,9 +39,6 @@ class Export:
     def _status(self) -> Dict[str, Any]:
         """Get current export status (single check)."""
         response = self._project.check_export_status([self._report_id])
-        if isinstance(response, str):
-            response = json.loads(response)
-
         for status_item in response.get("status", []):
             if status_item.get("report_id") == self._report_id:
                 return status_item
@@ -58,8 +55,6 @@ class Export:
 
         def get_status():
             response = self._project.check_export_status([self._report_id])
-            if isinstance(response, str):
-                response = json.loads(response)
             return response
 
         def is_completed(response_data):

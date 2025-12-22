@@ -467,7 +467,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             report_id = response.get("response", {}).get("report_id")
             return Export(report_id=report_id, project=self)
 
-    def create_local_export(self, export_config):
+    def create_local_export(self, export_config: schemas.CreateExportParams):
         """
         Creates a local export with the given configuration.
 
@@ -475,13 +475,15 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :return: Export instance with report_id and status tracking
         :raises LabellerrError: If the export creation fails
         """
-        # Validate export config using client_utils
-        client_utils.validate_export_config(export_config)
 
         unique_id = client_utils.generate_request_id()
-        export_config.update({"export_destination": "local", "question_ids": ["all"]})
 
-        payload = json.dumps(export_config)
+        export_config_dict = export_config.model_dump()
+        export_config_dict.update(
+            {"export_destination": schemas.ExportDestination.LOCAL.value}
+        )
+
+        payload = json.dumps(export_config_dict)
 
         response = self.client.make_request(
             "POST",
@@ -495,6 +497,37 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         )
         report_id = response.get("response", {}).get("report_id")
         return Export(report_id=report_id, project=self)
+
+    def list_exports(self):
+        """
+        Lists all exports for the project.
+
+        :return: ExportsListResponse
+        :raises LabellerrError: If the request fails
+        """
+        request_uuid = client_utils.generate_request_id()
+        url = f"{constants.BASE_URL}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
+
+        response = self.client.make_request(
+            "GET",
+            url,
+            request_id=request_uuid,
+        )
+        if not response:
+            raise LabellerrError(
+                f"No response received from list exports API (request_id: {request_uuid})"
+            )
+        if "response" not in response:
+            error_msg = response.get("error", "Unknown error")
+            raise LabellerrError(
+                f"List exports API failed: {error_msg} (request_id: {request_uuid})"
+            )
+        response_data = response.get("response", {})
+
+        return schemas.ExportsListResponse(
+            completed=response_data.get("completed", []),
+            in_progress=response_data.get("inProgress", []),
+        )
 
     def check_export_status(self, report_ids: list[str]):
         request_uuid = client_utils.generate_request_id()
@@ -516,22 +549,21 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             )
 
             # Now process each report_id
-            for status_item in result.get("status", []):
+            for idx, status_item in enumerate(result.get("status", [])):
                 if (
                     status_item.get("is_completed")
                     and status_item.get("export_status") == "Created"
                 ):
                     # Download URL if job completed
-                    download_url = (  # noqa E999 todo check use of that
-                        self.__fetch_exports_download_url(
-                            project_id=self.project_id,
-                            uuid=request_uuid,
-                            export_id=status_item["report_id"],
-                            client_id=self.client.client_id,
-                        )
+                    download_url = self.__fetch_exports_download_url(
+                        project_id=self.project_id,
+                        uuid=request_uuid,
+                        export_id=status_item["report_id"],
+                        client_id=self.client.client_id,
                     )
+                    result["status"][idx]["download_url"] = download_url
 
-            return json.dumps(result, indent=2)
+            return result
 
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to check export status: {str(e)}")
