@@ -9,10 +9,11 @@ import os
 import tempfile
 import time
 from typing import List, Optional
-import pytest
 from unittest.mock import PropertyMock, patch
+
+import pytest
+
 from labellerr.client import LabellerrClient
-from labellerr.core.projects.image_project import ImageProject
 from labellerr.core.projects.image_project import ImageProject
 
 

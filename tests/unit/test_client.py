@@ -14,11 +14,8 @@ from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import create_project
-from labellerr.core.users.base import LabellerrUsers
 from labellerr.core.schemas.projects import CreateProjectParams, RotationConfig
-from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
-from labellerr.core.datasets import LabellerrDataset
-from unittest.mock import Mock, patch
+from labellerr.core.users.base import LabellerrUsers
 
 
 @pytest.fixture

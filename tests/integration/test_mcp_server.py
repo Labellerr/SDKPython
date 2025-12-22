@@ -39,7 +39,6 @@ try:
         Option,
         QuestionType,
     )
-    from labellerr.core import constants
 
     SDK_AVAILABLE = True
 except ImportError as e:

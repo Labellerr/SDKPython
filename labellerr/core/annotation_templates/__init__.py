@@ -1,15 +1,15 @@
-from .base import LabellerrAnnotationTemplate
-from ..schemas.annotation_templates import (
-    CreateTemplateParams,
-    QuestionType,
-    Option,
-    DatasetDataType,
-)
-from .. import constants
-from ..client import LabellerrClient
 import uuid
 from typing import List
 
+from .. import constants
+from ..client import LabellerrClient
+from ..schemas.annotation_templates import (
+    CreateTemplateParams,
+    DatasetDataType,
+    Option,
+    QuestionType,
+)
+from .base import LabellerrAnnotationTemplate
 
 __all__ = [
     "LabellerrAnnotationTemplate",

@@ -15,12 +15,14 @@ This module provides organized schema models for various operations:
 from labellerr.core.autolabel.typings import *  # noqa: F403, F401
 
 # Export annotation templates
+# Export annotation templates
 from labellerr.core.schemas.annotation_templates import (
     AnnotationQuestion,
     Option,
     QuestionType,
 )
 
+# Autolabel schemas
 # Autolabel schemas
 from labellerr.core.schemas.autolabel import Hyperparameters, KeyFrame, TrainingRequest
 
@@ -54,6 +56,7 @@ from labellerr.core.schemas.datasets import (
 )
 
 # Export schemas
+# Export schemas
 from labellerr.core.schemas.exports import (
     CreateExportParams,
     ExportDestination,
@@ -81,29 +84,6 @@ from labellerr.core.schemas.users import (
     RemoveUserFromProjectParams,
     UpdateUserRoleParams,
 )
-
-# Autolabel schemas
-from labellerr.core.schemas.autolabel import (
-    Hyperparameters,
-    KeyFrame,
-    TrainingRequest,
-)
-
-# Export schemas
-from labellerr.core.schemas.exports import (
-    CreateExportParams,
-    ExportDestination,
-    ExportsListResponse,
-)
-
-
-# Export annotation templates
-from labellerr.core.schemas.annotation_templates import (
-    AnnotationQuestion,
-    Option,
-    QuestionType,
-)
-
 
 __all__ = [
     # Base types
