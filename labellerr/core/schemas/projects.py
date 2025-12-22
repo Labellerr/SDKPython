@@ -51,7 +51,6 @@ class CreateProjectParams(BaseModel):
 class CreateTemplateParams(BaseModel):
     """Parameters for creating an annotation template."""
 
-    client_id: str = Field(min_length=1)
     data_type: Literal["image", "video", "audio", "document", "text"]
     template_name: str = Field(min_length=1)
     questions: List[Question] = Field(min_length=1)

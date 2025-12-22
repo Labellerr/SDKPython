@@ -61,6 +61,7 @@ class LabellerrVideoFile(LabellerrFile):
                 "frame_end": frame_end,
                 "project_id": self.project_id,
                 "uuid": unique_id,
+                "client_id": self.client.client_id,
             }
 
             response = self.client.make_request(
@@ -115,8 +116,15 @@ class LabellerrVideoFile(LabellerrFile):
         :return: Dictionary with download statistics
         """
         try:
-            # Use file_id as folder name
-            folder_name = self.file_id
+            # Use [Dataset_id]+[File_id]+[File_name] as folder name
+            if self.dataset_id and self.file_name:
+                # Remove extension from file_name if present
+                base_name = os.path.splitext(self.file_name)[0]
+                folder_name = f"{self.dataset_id}+{self.file_id}+{base_name}"
+            elif self.dataset_id:
+                folder_name = f"{self.dataset_id}+{self.file_id}"
+            else:
+                folder_name = self.file_id
 
             # Set output path
             if output_folder:
@@ -207,7 +215,13 @@ class LabellerrVideoFile(LabellerrFile):
 
         input_pattern = os.path.join(frames_folder, pattern)
         if output_file is None:
-            output_file = f"{self.file_id}.mp4"
+            # Use [Dataset_id]+[File_id]+[File_name] as default output filename
+            if self.dataset_id and self.file_name:
+                output_file = f"{self.dataset_id}+{self.file_id}+{self.file_name}"
+            elif self.dataset_id:
+                output_file = f"{self.dataset_id}+{self.file_id}.mp4"
+            else:
+                output_file = f"{self.file_id}.mp4"
 
         # FFmpeg command
         command = [
@@ -235,7 +249,7 @@ class LabellerrVideoFile(LabellerrFile):
             raise LabellerrError(f"Error while joining frames: {str(e)}")
 
     def download_create_video_auto_cleanup(
-        self, output_folder: str = "./Labellerr_datastets"
+        self, output_folder: str = "./Labellerr_datasets"
     ):
         """
         Download frames, create video, and automatically clean up temporary frames.
@@ -258,26 +272,33 @@ class LabellerrVideoFile(LabellerrFile):
             print(f"\n[1/4] Fetching frame data from API (0 to {total_frames})...")
             frames_data = self.get_frames(frame_start=0, frame_end=total_frames)
 
+            # print(frames_data)
+
             if not frames_data:
                 raise LabellerrError("No frame data retrieved from API")
 
             print(f"Retrieved {len(frames_data)} frames")
 
-            # Step 2: Create dataset folder structure
+            # Step 2: Create output folder structure
             print("\n[2/4] Setting up output folders...")
-            if self.dataset_id is None:
-                dataset_folder = output_folder
-            else:
-                dataset_folder = os.path.join(output_folder, self.dataset_id)
-            os.makedirs(dataset_folder, exist_ok=True)
+            # Videos will be saved directly in output_folder (labellerr_datasets)
+            os.makedirs(output_folder, exist_ok=True)
 
-            # Define actual frames folder path
-            actual_frames_folder = os.path.join(dataset_folder, self.file_id)
+            # Define actual frames folder path using [Dataset_id]+[File_id]+[File_name] naming
+            # Frames will be temporarily stored in a subfolder for organization
+            if self.dataset_id and self.file_name:
+                base_name = os.path.splitext(self.file_name)[0]
+                folder_name = f"{self.dataset_id}+{self.file_id}+{base_name}"
+            elif self.dataset_id:
+                folder_name = f"{self.dataset_id}+{self.file_id}"
+            else:
+                folder_name = self.file_id
+            actual_frames_folder = os.path.join(output_folder, folder_name)
 
             # Step 3: Download frames
             print("\n[3/4] Downloading frames...")
             download_result = self.download_frames(
-                frames_data=frames_data, output_folder=dataset_folder
+                frames_data=frames_data, output_folder=output_folder
             )
 
             if download_result["failed_downloads"] > 0:
@@ -285,9 +306,16 @@ class LabellerrVideoFile(LabellerrFile):
                     f"\nWarning: {download_result['failed_downloads']} frames failed to download"
                 )
 
-            # Step 4: Create video from downloaded frames
+            # Step 4: Create video from downloaded frames using [Dataset_id]+[File_id]+[File_name] naming
+            # Save video directly in output_folder (labellerr_datasets)
             print("\n[4/4] Creating video from frames...")
-            video_output_path = os.path.join(dataset_folder, f"{self.file_id}.mp4")
+            if self.dataset_id and self.file_name:
+                video_filename = f"{self.dataset_id}+{self.file_id}+{self.file_name}"
+            elif self.dataset_id:
+                video_filename = f"{self.dataset_id}+{self.file_id}.mp4"
+            else:
+                video_filename = f"{self.file_id}.mp4"
+            video_output_path = os.path.join(output_folder, video_filename)
 
             self.create_video(
                 frames_folder=actual_frames_folder, output_file=video_output_path
@@ -304,7 +332,7 @@ class LabellerrVideoFile(LabellerrFile):
                 "file_id": self.file_id,
                 "dataset_id": self.dataset_id,
                 "video_path": video_output_path,
-                "output_folder": dataset_folder,
+                "output_folder": output_folder,
                 "frames_downloaded": download_result["successful_downloads"],
                 "frames_failed": download_result["failed_downloads"],
                 "failed_frames_info": download_result["failed_frames"],
@@ -313,19 +341,22 @@ class LabellerrVideoFile(LabellerrFile):
             print(f"\n{'='*60}")
             print("Processing complete!")
             print(f"Video saved to: {video_output_path}")
-            print("{'='*60}\n")
+            print(f"{'='*60}\n")
 
             return result
 
         except Exception as e:
             # Attempt cleanup on error
-            # Get the frames folder path
+            # Get the frames folder path using [Dataset_id]+[File_id]+[File_name] naming
             if self.dataset_id is None:
                 cleanup_folder = os.path.join(output_folder, self.file_id)
             else:
-                cleanup_folder = os.path.join(
-                    output_folder, self.dataset_id, self.file_id
-                )
+                if self.file_name:
+                    base_name = os.path.splitext(self.file_name)[0]
+                    folder_name = f"{self.dataset_id}+{self.file_id}+{base_name}"
+                else:
+                    folder_name = f"{self.dataset_id}+{self.file_id}"
+                cleanup_folder = os.path.join(output_folder, folder_name)
 
             if os.path.exists(cleanup_folder):
                 shutil.rmtree(cleanup_folder)

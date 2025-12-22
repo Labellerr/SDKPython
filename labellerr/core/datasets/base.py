@@ -7,11 +7,10 @@ from abc import ABCMeta
 from typing import Dict, Any, Generator, TYPE_CHECKING
 
 from .. import constants
-from ..exceptions import InvalidDatasetError, LabellerrError
 from ..client import LabellerrClient
-
-from ..files import LabellerrFile
 from ..connectors import LabellerrConnection
+from ..exceptions import InvalidDatasetError, LabellerrError
+from ..files import LabellerrFile
 
 if TYPE_CHECKING:
     from ..projects import LabellerrProject
@@ -178,12 +177,18 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
     def fetch_files(
         self, page_size: int = 1000
     ) -> Generator[LabellerrFile, None, None]:
+    def fetch_files(
+        self, page_size: int = 1000
+    ) -> Generator[LabellerrFile, None, None]:
         """
         Fetch all files in this dataset as LabellerrFile instances.
 
         :param page_size: Number of files to fetch per API request (default: 1000)
         :return: Generator yielding LabellerrFile instances
+        :param page_size: Number of files to fetch per API request (default: 1000)
+        :return: Generator yielding LabellerrFile instances
         """
+        logging.info(f"Fetching files for dataset: {self.dataset_id}")
         logging.info(f"Fetching files for dataset: {self.dataset_id}")
         next_search_after = None  # Start with None for first page
 
@@ -210,6 +215,14 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             files = response.get("response", {}).get("files", [])
 
             # Collect file IDs
+            for file_data in files:
+                try:
+                    _file = LabellerrFile.from_file_data(self.client, file_data)
+                    yield _file
+                except LabellerrError as e:
+                    logging.warning(
+                        f"Warning: Failed to create file instance for {file_data.get('file_id')}: {str(e)}"
+                    )
             for file_data in files:
                 try:
                     _file = LabellerrFile.from_file_data(self.client, file_data)

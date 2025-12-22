@@ -13,6 +13,7 @@ import pytest
 from unittest.mock import PropertyMock, patch
 from labellerr.client import LabellerrClient
 from labellerr.core.projects.image_project import ImageProject
+from labellerr.core.projects.image_project import ImageProject
 
 
 class TestConfig:
@@ -107,6 +108,25 @@ def mock_client():
 def client():
     """Create a test client with mock credentials - alias for mock_client"""
     return LabellerrClient("test_api_key", "test_api_secret", "test_client_id")
+
+
+@pytest.fixture
+def project(client):
+    """Create a test project instance for unit testing using proper mocking"""
+    project_data = {
+        "project_id": "test_project_id",
+        "data_type": "image",
+        "attached_datasets": [],
+    }
+
+    with patch.object(
+        ImageProject, "project_id", new_callable=PropertyMock
+    ) as mock_project_id:
+        mock_project_id.return_value = "test_project_id"
+        proj = ImageProject.__new__(ImageProject)
+        proj.client = client
+        proj._project_data = project_data
+        yield proj
 
 
 @pytest.fixture

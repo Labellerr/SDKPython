@@ -5,9 +5,13 @@ This module contains unit tests that test individual components
 in isolation using mocks and fixtures.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from pydantic import ValidationError
 
+from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
+from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import create_project
 from labellerr.core.users.base import LabellerrUsers

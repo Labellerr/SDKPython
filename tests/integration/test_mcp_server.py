@@ -11,8 +11,9 @@ Run these tests with: python tests/integration/run_mcp_integration_tests.py
 """
 
 import os
-import pytest
 import uuid
+
+import pytest
 from dotenv import load_dotenv
 
 # Mark all tests in this module as integration tests
@@ -21,21 +22,22 @@ pytestmark = pytest.mark.integration
 # Skip entire module if SDK core dependencies are not installed
 try:
     from labellerr.core import LabellerrClient
+    from labellerr.core import annotation_templates as template_ops
+    from labellerr.core import constants
     from labellerr.core import datasets as dataset_ops
     from labellerr.core import projects as project_ops
-    from labellerr.core import annotation_templates as template_ops
+    from labellerr.core import schemas
+    from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
     from labellerr.core.datasets import LabellerrDataset
     from labellerr.core.datasets.base import LabellerrDatasetMeta
     from labellerr.core.datasets.utils import upload_folder_files_to_dataset
     from labellerr.core.projects import LabellerrProject
     from labellerr.core.projects.base import LabellerrProjectMeta
-    from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
-    from labellerr.core import schemas
     from labellerr.core.schemas.annotation_templates import (
-        CreateTemplateParams,
         AnnotationQuestion,
-        QuestionType,
+        CreateTemplateParams,
         Option,
+        QuestionType,
     )
     from labellerr.core import constants
 
@@ -44,6 +46,7 @@ except ImportError as e:
     SDK_AVAILABLE = False
     pytest.skip(
         f"SDK core dependencies not installed: {e}. Install with: pip install -e '.[dev]'",
+        allow_module_level=True,
         allow_module_level=True,
     )
 
@@ -58,13 +61,24 @@ def credentials():
     api_secret = os.getenv("API_SECRET")
     client_id = os.getenv("CLIENT_ID")
     test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
+    test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
     if not all([api_key, api_secret, client_id]):
         pytest.skip(
             "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
         )
+        pytest.skip(
+            "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
+        )
 
     return {
+        "api_key": api_key,
+        "api_secret": api_secret,
+        "client_id": client_id,
+        "test_data_path": test_data_path,
         "api_key": api_key,
         "api_secret": api_secret,
         "client_id": client_id,
@@ -76,6 +90,9 @@ def credentials():
 def sdk_client(credentials):
     """Create SDK client instance"""
     client = LabellerrClient(
+        api_key=credentials["api_key"],
+        api_secret=credentials["api_secret"],
+        client_id=credentials["client_id"],
         api_key=credentials["api_key"],
         api_secret=credentials["api_secret"],
         client_id=credentials["client_id"],
@@ -91,6 +108,7 @@ def sdk_client(credentials):
 def test_dataset_id(sdk_client, credentials):
     """Create a test dataset and return its ID"""
     test_data_path = credentials.get("test_data_path")
+    test_data_path = credentials.get("test_data_path")
 
     if not test_data_path or not os.path.exists(test_data_path):
         pytest.skip("Test data path not provided or does not exist")
@@ -100,7 +118,10 @@ def test_dataset_id(sdk_client, credentials):
         sdk_client,
         {
             "client_id": credentials["client_id"],
+            "client_id": credentials["client_id"],
             "folder_path": test_data_path,
+            "data_type": "image",
+        },
             "data_type": "image",
         },
     )
@@ -110,9 +131,11 @@ def test_dataset_id(sdk_client, credentials):
         dataset_name=f"MCP Test Dataset {uuid.uuid4().hex[:8]}",
         data_type="image",
         dataset_description="Created by MCP integration tests",
+        dataset_description="Created by MCP integration tests",
     )
 
     dataset = dataset_ops.create_dataset_from_connection(
+        sdk_client, dataset_config, connection_id, "local"
         sdk_client, dataset_config, connection_id, "local"
     )
 
@@ -141,10 +164,12 @@ def test_template_id(sdk_client):
             required=True,
             options=[Option(option_name="#FF0000")],
             color="#FF0000",
+            color="#FF0000",
         )
     ]
 
     params = CreateTemplateParams(
+        template_name=template_name, data_type="image", questions=questions
         template_name=template_name, data_type="image", questions=questions
     )
 
@@ -161,6 +186,7 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
         annotation_rotation_count=1,
         review_rotation_count=1,
         client_review_rotation_count=1,
+        client_review_rotation_count=1,
     )
 
     params = schemas.CreateProjectParams(
@@ -169,12 +195,14 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
         rotations=rotations,
         use_ai=False,
         created_by=None,
+        created_by=None,
     )
 
     # Get dataset and template objects
     dataset = LabellerrDataset(sdk_client, test_dataset_id)
     template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
 
+    project = project_ops.create_project(sdk_client, params, [dataset], template)
     project = project_ops.create_project(sdk_client, params, [dataset], template)
 
     return project.project_id
@@ -183,6 +211,7 @@ def test_project_id(sdk_client, test_dataset_id, test_template_id):
 # =============================================================================
 # Test Cases
 # =============================================================================
+
 
 
 class TestSDKClientInitialization:
@@ -207,6 +236,7 @@ class TestDatasetOperations:
     def test_create_dataset_with_folder(self, sdk_client, credentials):
         """Test creating a dataset by uploading a folder"""
         test_data_path = credentials.get("test_data_path")
+        test_data_path = credentials.get("test_data_path")
 
         if not test_data_path or not os.path.exists(test_data_path):
             pytest.skip("Test data path not provided")
@@ -216,7 +246,10 @@ class TestDatasetOperations:
             sdk_client,
             {
                 "client_id": credentials["client_id"],
+                "client_id": credentials["client_id"],
                 "folder_path": test_data_path,
+                "data_type": "image",
+            },
                 "data_type": "image",
             },
         )
@@ -226,9 +259,11 @@ class TestDatasetOperations:
         # Create dataset
         dataset_config = schemas.DatasetConfig(
             dataset_name=f"Test Dataset {uuid.uuid4().hex[:8]}", data_type="image"
+            dataset_name=f"Test Dataset {uuid.uuid4().hex[:8]}", data_type="image"
         )
 
         dataset = dataset_ops.create_dataset_from_connection(
+            sdk_client, dataset_config, connection_id, "local"
             sdk_client, dataset_config, connection_id, "local"
         )
 
@@ -248,6 +283,11 @@ class TestDatasetOperations:
 
     def test_list_datasets(self, sdk_client):
         """Test listing datasets"""
+        datasets = list(
+            dataset_ops.list_datasets(
+                sdk_client, "image", schemas.DataSetScope.client, page_size=10
+            )
+        )
         datasets = list(
             dataset_ops.list_datasets(
                 sdk_client, "image", schemas.DataSetScope.client, page_size=10
@@ -273,10 +313,12 @@ class TestAnnotationTemplateOperations:
                 required=True,
                 options=[Option(option_name="#00FF00")],
                 color="#00FF00",
+                color="#00FF00",
             )
         ]
 
         params = CreateTemplateParams(
+            template_name=template_name, data_type="image", questions=questions
             template_name=template_name, data_type="image", questions=questions
         )
 
@@ -304,15 +346,18 @@ class TestProjectOperations:
             annotation_rotation_count=1,
             review_rotation_count=1,
             client_review_rotation_count=1,
+            client_review_rotation_count=1,
         )
 
         params = schemas.CreateProjectParams(
+            project_name=project_name, data_type="image", rotations=rotations
             project_name=project_name, data_type="image", rotations=rotations
         )
 
         dataset = LabellerrDataset(sdk_client, test_dataset_id)
         template = LabellerrAnnotationTemplate(sdk_client, test_template_id)
 
+        project = project_ops.create_project(sdk_client, params, [dataset], template)
         project = project_ops.create_project(sdk_client, params, [dataset], template)
 
         assert project.project_id is not None
@@ -353,6 +398,7 @@ class TestExportOperations:
             export_format="json",
             statuses=["accepted"],
             export_destination=schemas.ExportDestination.LOCAL,
+            export_destination=schemas.ExportDestination.LOCAL,
         )
 
         export = project.create_export(export_config)
@@ -369,6 +415,7 @@ class TestExportOperations:
             export_description="Testing status check",
             export_format="json",
             statuses=["accepted"],
+            export_destination=schemas.ExportDestination.LOCAL,
             export_destination=schemas.ExportDestination.LOCAL,
         )
 
@@ -389,6 +436,7 @@ class TestCompleteWorkflow:
     def test_full_workflow(self, sdk_client, credentials):
         """Test creating dataset -> template -> project"""
         test_data_path = credentials.get("test_data_path")
+        test_data_path = credentials.get("test_data_path")
 
         if not test_data_path or not os.path.exists(test_data_path):
             pytest.skip("Test data path not provided")
@@ -398,7 +446,10 @@ class TestCompleteWorkflow:
             sdk_client,
             {
                 "client_id": credentials["client_id"],
+                "client_id": credentials["client_id"],
                 "folder_path": test_data_path,
+                "data_type": "image",
+            },
                 "data_type": "image",
             },
         )
@@ -407,9 +458,11 @@ class TestCompleteWorkflow:
         dataset_config = schemas.DatasetConfig(
             dataset_name=f"Workflow Test Dataset {uuid.uuid4().hex[:8]}",
             data_type="image",
+            data_type="image",
         )
 
         dataset = dataset_ops.create_dataset_from_connection(
+            sdk_client, dataset_config, connection_id, "local"
             sdk_client, dataset_config, connection_id, "local"
         )
         dataset_id = dataset.dataset_id
@@ -424,12 +477,14 @@ class TestCompleteWorkflow:
                 required=True,
                 options=[Option(option_name="#FF00FF")],
                 color="#FF00FF",
+                color="#FF00FF",
             )
         ]
 
         template_params = CreateTemplateParams(
             template_name=f"Workflow Test Template {uuid.uuid4().hex[:8]}",
             data_type="image",
+            questions=questions,
             questions=questions,
         )
 
@@ -440,15 +495,18 @@ class TestCompleteWorkflow:
             annotation_rotation_count=1,
             review_rotation_count=1,
             client_review_rotation_count=1,
+            client_review_rotation_count=1,
         )
 
         project_params = schemas.CreateProjectParams(
             project_name=f"Workflow Test Project {uuid.uuid4().hex[:8]}",
             data_type="image",
             rotations=rotations,
+            rotations=rotations,
         )
 
         project = project_ops.create_project(
+            sdk_client, project_params, [dataset], template
             sdk_client, project_params, [dataset], template
         )
         project_id = project.project_id

@@ -1,8 +1,10 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from enum import Enum
-from ..schemas import DatasetDataType
 import uuid
+from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+from .base import DatasetDataType
 
 
 class QuestionType(str, Enum):
