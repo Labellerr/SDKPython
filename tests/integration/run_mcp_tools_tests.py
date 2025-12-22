@@ -30,9 +30,9 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Check environment variables
-api_key = os.getenv('API_KEY')
-api_secret = os.getenv('API_SECRET')
-client_id = os.getenv('CLIENT_ID')
+api_key = os.getenv("API_KEY")
+api_secret = os.getenv("API_SECRET")
+client_id = os.getenv("CLIENT_ID")
 
 if not all([api_key, api_secret, client_id]):
     print("❌ Missing required environment variables:")
@@ -50,48 +50,48 @@ if not all([api_key, api_secret, client_id]):
     sys.exit(1)
 
 # Optional test data path
-test_data_path = os.getenv('LABELLERR_TEST_DATA_PATH')
+test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 if test_data_path:
     print(f"ℹ️  Test data path: {test_data_path}")
 else:
     print("ℹ️  No test data path provided - file upload tests will be skipped")
     print("   Set LABELLERR_TEST_DATA_PATH to enable file upload tests")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("LABELLERR MCP SERVER - INTEGRATION TESTS")
-print("="*80)
+print("=" * 80)
 print(f"\nAPI Key: {api_key[:10]}...")
 print(f"Client ID: {client_id}")
-print("="*80 + "\n")
+print("=" * 80 + "\n")
 
 # Run pytest
 import pytest
 
 # Build pytest args
 pytest_args = [
-    'tests/integration/test_mcp_tools.py',
-    '-v',           # Verbose
-    '-s',           # Show print statements
-    '--tb=short',   # Short traceback format
-    '--color=yes',  # Colored output
+    "tests/integration/test_mcp_tools.py",
+    "-v",  # Verbose
+    "-s",  # Show print statements
+    "--tb=short",  # Short traceback format
+    "--color=yes",  # Colored output
 ]
 
 # Add any command line arguments
 if len(sys.argv) > 1:
     # User specified specific test(s)
     test_filter = sys.argv[1]
-    pytest_args.append(f'-k={test_filter}')
+    pytest_args.append(f"-k={test_filter}")
     print(f"Running tests matching: {test_filter}\n")
 
 # Run tests
 exit_code = pytest.main(pytest_args)
 
 # Print summary
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 if exit_code == 0:
     print("✅ ALL TESTS PASSED!")
 else:
     print("❌ SOME TESTS FAILED")
-print("="*80 + "\n")
+print("=" * 80 + "\n")
 
 sys.exit(exit_code)
