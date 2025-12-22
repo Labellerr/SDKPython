@@ -29,6 +29,12 @@ class LabellerrDatasetMeta(ABCMeta):
     @staticmethod
     def get_dataset(client: "LabellerrClient", dataset_id: str):
         """Get dataset from Labellerr API"""
+         # Validate dataset_id format (should be a valid UUID)
+        try:
+            uuid.UUID(dataset_id)
+        except (ValueError, AttributeError):
+            raise InvalidDatasetError(f"Invalid dataset ID format: {dataset_id}")
+        
         unique_id = str(uuid.uuid4())
         url = (
             f"{constants.BASE_URL}/datasets/{dataset_id}?client_id={client.client_id}"
