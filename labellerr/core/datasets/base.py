@@ -12,6 +12,7 @@ from ..client import LabellerrClient
 
 from ..files import LabellerrFile
 from ..connectors import LabellerrConnection
+from ..exceptions import InvalidDatasetError, InvalidDatasetIDError, LabellerrError
 
 if TYPE_CHECKING:
     from ..projects import LabellerrProject
@@ -30,10 +31,12 @@ class LabellerrDatasetMeta(ABCMeta):
     def get_dataset(client: "LabellerrClient", dataset_id: str):
         """Get dataset from Labellerr API"""
         # Validate dataset_id format (should be a valid UUID)
+        if not dataset_id:
+            raise InvalidDatasetIDError("Dataset ID cannot be None or empty")
         try:
             uuid.UUID(dataset_id)
-        except (ValueError, AttributeError):
-            raise InvalidDatasetError(f"Invalid dataset ID format: {dataset_id}")
+        except (ValueError, TypeError):
+            raise InvalidDatasetIDError(f"Invalid dataset ID format: {dataset_id}")
 
         unique_id = str(uuid.uuid4())
         url = (
