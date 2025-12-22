@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
 from .. import client_utils, constants, gcs
-from ..exceptions import LabellerrError
 from ..client import LabellerrClient
+from ..exceptions import LabellerrError
 
 
 def get_total_folder_file_count_and_total_size(folder_path, data_type):
@@ -254,7 +254,7 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
         max_workers = min(
             os.cpu_count() or 1,  # Number of CPU cores (default to 1 if None)
             len(batches),  # Number of batches
-            20,
+            5,
         )
         connection_id = str(uuid.uuid4())
         # Process batches in parallel
