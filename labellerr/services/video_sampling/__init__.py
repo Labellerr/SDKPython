@@ -204,7 +204,7 @@ def _extract_video_name_and_frame(filename: str) -> tuple[str, int, int]:
     # Extract FPS from the parts (format: FPS{number})
     fps = 25  # Default FPS
     video_name_part = None
-    
+
     for i, part in enumerate(parts):
         fps_match = re.match(r"FPS(\d+)$", part)
         if fps_match:
@@ -213,11 +213,11 @@ def _extract_video_name_and_frame(filename: str) -> tuple[str, int, int]:
             if i > 0:
                 video_name_part = parts[i - 1]
             break
-    
+
     # If no FPS found, use the second-to-last part as video name (old format)
     if video_name_part is None:
         video_name_part = parts[-2]
-    
+
     video_name = f"{video_name_part}.mp4"
 
     return video_name, frame_number, fps
@@ -321,7 +321,9 @@ def coco_to_video_json(
 
         # Extract video name, frame number, and FPS
         try:
-            video_name, frame_number, fps = _extract_video_name_and_frame(image["file_name"])
+            video_name, frame_number, fps = _extract_video_name_and_frame(
+                image["file_name"]
+            )
         except ValueError as e:
             print(f"Warning: Skipping annotation - {e}")
             fps = default_fps  # Use default if extraction fails
@@ -367,7 +369,7 @@ def coco_to_video_json(
         # Create a new answer group for each annotation
         # This allows multiple annotations on the same frame
         new_answer_group = {"startFrame": frame_number, "frames": {}}
-        
+
         # Add frame data
         frame_data = {
             "frame": frame_number,
@@ -375,7 +377,7 @@ def coco_to_video_json(
             "isManualAnnotation": True,
             "fps": fps,
         }
-        
+
         new_answer_group["frames"][str(frame_number)] = frame_data
         video_annotations[video_key]["annotations"][question_key]["answer"].append(
             new_answer_group

@@ -15,9 +15,7 @@ output_path = r"D:\Professional\Labellerr_SDK\SDKPython\labellerr\notebooks\vide
 # FPS will be extracted from filenames if available
 # Falls back to default_fps=25 if not found in filename
 video_annotations = coco_to_video_json(
-    coco_json_path=coco_json_path,
-    output_path=output_path,
-    default_fps=25
+    coco_json_path=coco_json_path, output_path=output_path, default_fps=25
 )
 
 print(f"\n✅ Conversion complete!")

@@ -315,7 +315,9 @@ class LabellerrVideoFile(LabellerrFile):
             if self.dataset_id and self.file_name and self.fps:
                 # Remove extension from file_name if present, then add FPS and .mp4
                 base_name = os.path.splitext(self.file_name)[0]
-                video_filename = f"{self.dataset_id}+{self.file_id}+{base_name}+FPS{self.fps}.mp4"
+                video_filename = (
+                    f"{self.dataset_id}+{self.file_id}+{base_name}+FPS{self.fps}.mp4"
+                )
             else:
                 raise ValueError("dataset_id, file_name, and fps metadata are required")
             video_output_path = os.path.join(output_folder, video_filename)
