@@ -15,7 +15,7 @@ from .base import LabellerrProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
 from .image_project import ImageProject as LabellerrImageProject
 from .text_project import TextProject as LabellerrTextProject
-from .base import LabellerrProject
+from .video_project import VideoProject as LabellerrVideoProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List
 from concurrent.futures import ThreadPoolExecutor

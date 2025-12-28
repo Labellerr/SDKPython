@@ -35,6 +35,11 @@ class LabellerrVideoFile(LabellerrFile):
         """Get total number of frames in the video."""
         return self.metadata.get("total_frames", 0)
 
+    @property
+    def fps(self):
+        """Get frames per second of the video."""
+        return self.metadata.get("fps", 25)
+
     def get_frames(self, frame_start: int = 0, frame_end: int | None = None):
         """
         Retrieve video frames data from Labellerr API.
@@ -216,12 +221,10 @@ class LabellerrVideoFile(LabellerrFile):
         input_pattern = os.path.join(frames_folder, pattern)
         if output_file is None:
             # Use [Dataset_id]+[File_id]+[File_name] as default output filename
-            if self.dataset_id and self.file_name:
-                output_file = f"{self.dataset_id}+{self.file_id}+{self.file_name}"
-            elif self.dataset_id:
-                output_file = f"{self.dataset_id}+{self.file_id}.mp4"
+            if self.dataset_id and self.file_name and self.metadata.get("fps"):
+                output_file = f"{self.dataset_id}+{self.file_id}+{self.file_name}+FPS{self.metadata.get('fps')}.mp4"
             else:
-                output_file = f"{self.file_id}.mp4"
+                raise ValueError("output_file must be provided")
 
         # FFmpeg command
         command = [
@@ -306,15 +309,15 @@ class LabellerrVideoFile(LabellerrFile):
                     f"\nWarning: {download_result['failed_downloads']} frames failed to download"
                 )
 
-            # Step 4: Create video from downloaded frames using [Dataset_id]+[File_id]+[File_name] naming
+            # Step 4: Create video from downloaded frames using [Dataset_id]+[File_id]+[File_name]+FPS[fps] naming
             # Save video directly in output_folder (labellerr_datasets)
             print("\n[4/4] Creating video from frames...")
-            if self.dataset_id and self.file_name:
-                video_filename = f"{self.dataset_id}+{self.file_id}+{self.file_name}"
-            elif self.dataset_id:
-                video_filename = f"{self.dataset_id}+{self.file_id}.mp4"
+            if self.dataset_id and self.file_name and self.fps:
+                # Remove extension from file_name if present, then add FPS and .mp4
+                base_name = os.path.splitext(self.file_name)[0]
+                video_filename = f"{self.dataset_id}+{self.file_id}+{base_name}+FPS{self.fps}.mp4"
             else:
-                video_filename = f"{self.file_id}.mp4"
+                raise ValueError("dataset_id, file_name, and fps metadata are required")
             video_output_path = os.path.join(output_folder, video_filename)
 
             self.create_video(

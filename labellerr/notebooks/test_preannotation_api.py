@@ -20,8 +20,8 @@ if not API_SECRET:
 if not CLIENT_ID:
     raise ValueError("QA_CLIENT_ID is not set")
 
-PROJECT_ID = "jeanna_mixed_aphid_93841"
-VIDEO_JSON_FILE_PATH = r"D:\Professional\Labellerr_SDK\dummy_annotation.json"
+PROJECT_ID = "caryl_geographical_turkey_21445"
+VIDEO_JSON_FILE_PATH = r"D:\Professional\Labellerr_SDK\SDKPython\labellerr\notebooks\video_keyframe_annotations.json"
 
 
 def main():

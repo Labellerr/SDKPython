@@ -254,7 +254,7 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
         max_workers = min(
             os.cpu_count() or 1,  # Number of CPU cores (default to 1 if None)
             len(batches),  # Number of batches
-            5,
+            20,
         )
         connection_id = str(uuid.uuid4())
         # Process batches in parallel

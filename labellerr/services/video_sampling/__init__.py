@@ -168,19 +168,19 @@ def process_videos_batch(
 # ============================================================================
 
 
-def _extract_video_name_and_frame(filename: str) -> tuple[str, int]:
+def _extract_video_name_and_frame(filename: str) -> tuple[str, int, int]:
     """
-    Extract video name and frame number from keyframe filename.
+    Extract video name, frame number, and FPS from keyframe filename.
 
-    Format: {dataset_id}+{file_id}+{video_name}+frame_{frame_number}.jpg
-    Example: 15908795-09eb-4cdb-a39b-8689f8f936e5+471163aa-19dc-4bc7-9aee-04780591281a+butterflies_960p+frame_1064.jpg
-    Returns: ("butterflies_960p.mp4", 1064)
+    Format: {dataset_id}+{file_id}+{video_name}+FPS{fps}+frame_{frame_number}.jpg
+    Example: 15908795-09eb-4cdb-a39b-8689f8f936e5+471163aa-19dc-4bc7-9aee-04780591281a+butterflies_960p+FPS29+frame_1064.jpg
+    Returns: ("butterflies_960p.mp4", 1064, 29)
 
     Args:
         filename: The keyframe filename
 
     Returns:
-        Tuple of (video_name, frame_number)
+        Tuple of (video_name, frame_number, fps)
 
     Raises:
         ValueError: If filename format is invalid
@@ -191,7 +191,7 @@ def _extract_video_name_and_frame(filename: str) -> tuple[str, int]:
     if len(parts) < 4:
         raise ValueError(f"Invalid filename format: {filename}")
 
-    # Last part contains video_name+frame_X.jpg
+    # Last part contains frame_X.jpg
     last_part = parts[-1]
 
     # Extract frame number using regex
@@ -201,11 +201,26 @@ def _extract_video_name_and_frame(filename: str) -> tuple[str, int]:
 
     frame_number = int(frame_match.group(1))
 
-    # Extract video name (everything before +frame_X.jpg)
-    video_name_part = parts[-2]  # The part before the last '+'
+    # Extract FPS from the parts (format: FPS{number})
+    fps = 25  # Default FPS
+    video_name_part = None
+    
+    for i, part in enumerate(parts):
+        fps_match = re.match(r"FPS(\d+)$", part)
+        if fps_match:
+            fps = int(fps_match.group(1))
+            # Video name is the part before FPS
+            if i > 0:
+                video_name_part = parts[i - 1]
+            break
+    
+    # If no FPS found, use the second-to-last part as video name (old format)
+    if video_name_part is None:
+        video_name_part = parts[-2]
+    
     video_name = f"{video_name_part}.mp4"
 
-    return video_name, frame_number
+    return video_name, frame_number, fps
 
 
 def _convert_segmentation_to_polygon(segmentation: List[float]) -> List[Dict[str, int]]:
@@ -253,7 +268,7 @@ def _convert_bbox_to_video_format(bbox: List[float]) -> Dict[str, Any]:
 def coco_to_video_json(
     coco_json_path: str,
     output_path: Optional[str] = "Video_Keyframe_annot.json",
-    fps: int = 23,
+    default_fps: int = 25,
 ) -> List[Dict[str, Any]]:
     """
     Convert COCO JSON format (from keyframe exports) to Video JSON format.
@@ -265,7 +280,7 @@ def coco_to_video_json(
         coco_json_path: Path to the COCO JSON file
         output_path: Path to save the converted JSON. Default: "Video_Keyframe_annot.json"
                      Set to None to skip saving
-        fps: Frames per second for the video (default: 23)
+        default_fps: Default frames per second if not found in filename (default: 25)
 
     Returns:
         List of video annotation dictionaries
@@ -304,11 +319,12 @@ def coco_to_video_json(
         image = images[image_id]
         category = categories[category_id]
 
-        # Extract video name and frame number
+        # Extract video name, frame number, and FPS
         try:
-            video_name, frame_number = _extract_video_name_and_frame(image["file_name"])
+            video_name, frame_number, fps = _extract_video_name_and_frame(image["file_name"])
         except ValueError as e:
             print(f"Warning: Skipping annotation - {e}")
+            fps = default_fps  # Use default if extraction fails
             continue
 
         # Determine question type based on annotation structure
@@ -348,31 +364,10 @@ def coco_to_video_json(
             ] = question_name
             video_annotations[video_key]["annotations"][question_key]["answer"] = []
 
-        # # Find or create the answer group for this annotation
-        # # Each unique annotation should be in its own answer group
-        # answer_id = annotation.get("labellerr_answer_id", annotation.get("id"))
-
-        # Check if we already have an answer group for this annotation
-        existing_answer = None
-        for ans_group in video_annotations[video_key]["annotations"][question_key][
-            "answer"
-        ]:
-            # Check if this frame already exists in this answer group
-            if str(frame_number) in ans_group.get("frames", {}):
-                existing_answer = ans_group
-                break
-
-        if existing_answer is None:
-            # Create new answer group
-            existing_answer = {"startFrame": frame_number, "frames": {}}
-            video_annotations[video_key]["annotations"][question_key]["answer"].append(
-                existing_answer
-            )
-        else:
-            # Update startFrame if this frame is earlier
-            if frame_number < existing_answer["startFrame"]:
-                existing_answer["startFrame"] = frame_number
-
+        # Create a new answer group for each annotation
+        # This allows multiple annotations on the same frame
+        new_answer_group = {"startFrame": frame_number, "frames": {}}
+        
         # Add frame data
         frame_data = {
             "frame": frame_number,
@@ -380,8 +375,11 @@ def coco_to_video_json(
             "isManualAnnotation": True,
             "fps": fps,
         }
-
-        existing_answer["frames"][str(frame_number)] = frame_data
+        
+        new_answer_group["frames"][str(frame_number)] = frame_data
+        video_annotations[video_key]["annotations"][question_key]["answer"].append(
+            new_answer_group
+        )
 
     # Convert to list format
     result = []
