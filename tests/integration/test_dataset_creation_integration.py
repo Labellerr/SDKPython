@@ -34,8 +34,10 @@ _created_datasets = []
 
 def register_dataset_for_cleanup(dataset_id: str, client: LabellerrClient):
     """Register a dataset ID for cleanup at the end of test session"""
-    if dataset_id and dataset_id not in _created_datasets:
+    # Check if dataset_id already exists in the list of tuples
+    if dataset_id and dataset_id not in [d[0] for d in _created_datasets]:
         _created_datasets.append((dataset_id, client))
+        print(f"  → Registered dataset {dataset_id} for cleanup")
 
 
 def cleanup_all_datasets():
@@ -103,11 +105,42 @@ def skip_if_auth_error(e: Exception):
         pytest.skip(f"File uploads failed (likely due to invalid credentials): {e}")
 
 
+def handle_api_errors(func):
+    """
+    Decorator to handle common API errors in integration tests.
+
+    Automatically:
+    - Skips tests on auth errors (403, invalid credentials)
+    - Skips tests on API unavailability (500, 503)
+    - Propagates other errors for proper failure reporting
+
+    Usage:
+        @handle_api_errors
+        def test_something(self, integration_client):
+            # test code
+    """
+    from functools import wraps
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except LabellerrError as e:
+            skip_if_auth_error(e)
+            if "500" in str(e) or "unavailable" in str(e).lower():
+                pytest.skip(f"API unavailable: {e}")
+            else:
+                raise
+
+    return wrapper
+
+
 @pytest.mark.integration
 class TestDatasetCreationIntegration:
     """Integration tests for dataset creation"""
 
-    def test_create_dataset_from_local_folder(self, integration_client, test_credentials):
+    @handle_api_errors
+    def test_create_dataset_from_local_folder(self, integration_client):
         """
         Comprehensive test: dataset creation, all properties validation, and property types.
         Tests:
@@ -190,12 +223,6 @@ class TestDatasetCreationIntegration:
                 assert delete_result is not None
                 dataset_id = None
 
-            except LabellerrError as e:
-                skip_if_auth_error(e)
-                if "500" in str(e) or "unavailable" in str(e).lower():
-                    pytest.skip(f"API unavailable: {e}")
-                else:
-                    raise
             finally:
                 if dataset_id:
                     try:
@@ -203,6 +230,7 @@ class TestDatasetCreationIntegration:
                     except Exception:
                         pass
 
+    @handle_api_errors
     def test_create_dataset_from_connection_with_existing_connection(
         self, integration_client, test_credentials, test_project_ids
     ):
@@ -218,33 +246,24 @@ class TestDatasetCreationIntegration:
             data_type="image",
         )
 
-        try:
-            # Create dataset from connection
-            dataset = create_dataset_from_connection(
-                client=integration_client,
-                dataset_config=dataset_config,
-                connection=connection_id,
-                path="test/path",
-            )
+        # Create dataset from connection
+        dataset = create_dataset_from_connection(
+            client=integration_client,
+            dataset_config=dataset_config,
+            connection=connection_id,
+            path="test/path",
+        )
 
-            # Verify dataset was created
-            assert dataset is not None
-            assert dataset.dataset_id is not None
-            assert dataset.name == dataset_config.dataset_name
+        # Verify dataset was created
+        assert dataset is not None
+        assert dataset.dataset_id is not None
+        assert dataset.name == dataset_config.dataset_name
 
-            # Clean up
-            delete_dataset(integration_client, dataset.dataset_id)
+        # Clean up
+        delete_dataset(integration_client, dataset.dataset_id)
 
-        except LabellerrError as e:
-            skip_if_auth_error(e)
-            if any(phrase in str(e).lower() for phrase in ["500", "unavailable", "not found"]):
-                pytest.skip(f"Test skipped due to: {e}")
-            else:
-                raise
-
-    def test_create_dataset_with_multimodal_indexing(
-        self, integration_client, test_credentials
-    ):
+    @handle_api_errors
+    def test_create_dataset_with_multimodal_indexing(self, integration_client):
         """
         Comprehensive test: multimodal indexing and dataset deletion.
         Tests dataset creation with multimodal indexing, then verifies deletion works correctly.
@@ -291,12 +310,6 @@ class TestDatasetCreationIntegration:
                 # Mark as deleted (don't verify by fetching as API may return 500 errors)
                 dataset_id = None
 
-            except LabellerrError as e:
-                skip_if_auth_error(e)
-                if "500" in str(e) or "unavailable" in str(e).lower():
-                    pytest.skip(f"API unavailable: {e}")
-                else:
-                    raise
             finally:
                 if dataset_id:
                     try:
@@ -370,99 +383,72 @@ class TestDatasetDeletionIntegration:
 class TestDatasetListingIntegration:
     """Integration tests for dataset listing"""
 
-    def test_list_datasets_client_scope(self, integration_client, test_credentials):
+    @handle_api_errors
+    def test_list_datasets_client_scope(self, integration_client):
         """Test listing datasets with client scope"""
-        try:
-            datasets = list(list_datasets(
-                client=integration_client,
-                datatype="image",
-                scope=DataSetScope.client,
-                page_size=10,
-            ))
+        datasets = list(list_datasets(
+            client=integration_client,
+            datatype="image",
+            scope=DataSetScope.client,
+            page_size=10,
+        ))
 
-            # Should return a list (may be empty)
-            assert isinstance(datasets, list)
+        # Should return a list (may be empty)
+        assert isinstance(datasets, list)
 
-            # If datasets exist, verify structure
-            if datasets:
-                for dataset in datasets:
-                    assert "dataset_id" in dataset
-                    # May have other fields like name, data_type, etc.
+        # If datasets exist, verify structure
+        if datasets:
+            for dataset in datasets:
+                assert "dataset_id" in dataset
+                # May have other fields like name, data_type, etc.
 
-        except LabellerrError as e:
-            skip_if_auth_error(e)
-            if "500" in str(e) or "unavailable" in str(e).lower():
-                pytest.skip(f"API unavailable: {e}")
-            else:
-                raise
-
-    def test_list_datasets_auto_pagination(self, integration_client, test_credentials):
+    @handle_api_errors
+    def test_list_datasets_auto_pagination(self, integration_client):
         """Test listing datasets with auto-pagination (page_size=-1)"""
-        try:
-            datasets = list(list_datasets(
-                client=integration_client,
-                datatype="image",
-                scope=DataSetScope.client,
-                page_size=-1,  # Auto-pagination
-            ))
+        datasets = list(list_datasets(
+            client=integration_client,
+            datatype="image",
+            scope=DataSetScope.client,
+            page_size=-1,  # Auto-pagination
+        ))
 
-            # Should return a list
-            assert isinstance(datasets, list)
+        # Should return a list
+        assert isinstance(datasets, list)
 
-        except LabellerrError as e:
-            skip_if_auth_error(e)
-            if "500" in str(e) or "unavailable" in str(e).lower():
-                pytest.skip(f"API unavailable: {e}")
-            else:
-                raise
-
-    def test_list_datasets_different_data_types(self, integration_client, test_credentials):
+    @handle_api_errors
+    def test_list_datasets_different_data_types(self, integration_client):
         """Test listing datasets for different data types"""
         data_types = ["image", "video", "document"]
 
         for data_type in data_types:
-            try:
-                datasets = list(list_datasets(
-                    client=integration_client,
-                    datatype=data_type,
-                    scope=DataSetScope.client,
-                    page_size=5,
-                ))
-
-                assert isinstance(datasets, list)
-
-            except LabellerrError as e:
-                skip_if_auth_error(e)
-                if "500" in str(e) or "unavailable" in str(e).lower():
-                    pytest.skip(f"API unavailable for {data_type}: {e}")
-                else:
-                    raise
-
-    def test_list_datasets_user_scope(self, integration_client, test_credentials):
-        """Test listing datasets with project scope"""
-        try:
             datasets = list(list_datasets(
                 client=integration_client,
-                datatype="image",
-                scope=DataSetScope.project,
-                page_size=10,
+                datatype=data_type,
+                scope=DataSetScope.client,
+                page_size=5,
             ))
 
-            # Should return a list (may be empty)
             assert isinstance(datasets, list)
 
-        except LabellerrError as e:
-            skip_if_auth_error(e)
-            if "500" in str(e) or "unavailable" in str(e).lower():
-                pytest.skip(f"API unavailable: {e}")
-            else:
-                raise
+    @handle_api_errors
+    def test_list_datasets_project_scope(self, integration_client):
+        """Test listing datasets with project scope"""
+        datasets = list(list_datasets(
+            client=integration_client,
+            datatype="image",
+            scope=DataSetScope.project,
+            page_size=10,
+        ))
+
+        # Should return a list (may be empty)
+        assert isinstance(datasets, list)
 
 
 @pytest.mark.integration
 class TestDatasetWorkflowIntegration:
     """Integration tests for complete dataset workflows"""
 
+    @handle_api_errors
     def test_dataset_update_operations(self, integration_client):
         """
         Test dataset update operations: name, description, and metadata.
@@ -526,12 +512,6 @@ class TestDatasetWorkflowIntegration:
                 assert delete_result is not None
                 dataset_id = None
 
-            except LabellerrError as e:
-                skip_if_auth_error(e)
-                if "500" in str(e) or "unavailable" in str(e).lower():
-                    pytest.skip(f"API unavailable: {e}")
-                else:
-                    raise
             finally:
                 if dataset_id:
                     try:
@@ -539,7 +519,8 @@ class TestDatasetWorkflowIntegration:
                     except Exception:
                         pass
 
-    def test_complete_dataset_lifecycle(self, integration_client, test_credentials):
+    @handle_api_errors
+    def test_complete_dataset_lifecycle(self, integration_client):
         """Test complete dataset lifecycle: create, fetch, list, and delete"""
         # Get real test images
         test_images = get_test_images_from_env(num_images=2)
@@ -601,12 +582,6 @@ class TestDatasetWorkflowIntegration:
 
                 dataset_id = None  # Mark as deleted
 
-            except LabellerrError as e:
-                skip_if_auth_error(e)
-                if "500" in str(e) or "unavailable" in str(e).lower():
-                    pytest.skip(f"API unavailable: {e}")
-                else:
-                    raise
             finally:
                 # Cleanup: ensure dataset is deleted even if test fails
                 if dataset_id:
