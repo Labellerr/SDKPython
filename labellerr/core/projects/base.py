@@ -670,8 +670,16 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
         # Validate parameters using Pydantic
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/projects/import_users?selected_project_id={self.project_id}&project_id={from_project.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+        url = f"{constants.BASE_URL}/users/projects/import_users?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+
+        payload = json.dumps(
+            {"selected_project_id": from_project.project_id, "import_all_users": True}
+        )
+
         response = self.client.make_request(
-            "POST", url, extra_headers={"Content-Type": "application/json"}
+            "POST",
+            url,
+            data=payload,
+            extra_headers={"Content-Type": "application/json"},
         )
         return response.get("response")
