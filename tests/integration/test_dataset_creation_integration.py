@@ -6,7 +6,6 @@ and listing functionality works correctly with the Labellerr API.
 """
 
 import os
-import re
 import time
 import tempfile
 from pathlib import Path
@@ -28,66 +27,6 @@ from labellerr.core.exceptions import (
     InvalidDatasetError,
 )
 from labellerr.core.schemas import DatasetConfig, DataSetScope
-
-
-def enhance_api_error(error: Exception, context: str) -> str:
-    """
-    Enhance API error messages with context for better CI diagnostics.
-
-    Args:
-        error: The original exception
-        context: Description of what operation was being performed
-
-    Returns:
-        Enhanced error message with API details
-    """
-    error_msg = str(error)
-
-    # Check for HTML error responses (API returning error pages)
-    if "<!DOCTYPE html>" in error_msg or "<html" in error_msg:
-        # Try to extract HTTP status from HTML
-        status_match = re.search(r'(\d{3})\s+([\w\s]+)', error_msg)
-        if status_match:
-            status_code = status_match.group(1)
-            status_text = status_match.group(2)
-            return (
-                f"{context} - API returned HTML error page\n"
-                f"HTTP Status: {status_code} {status_text}\n"
-                f"This indicates an API infrastructure issue (endpoint not found, server error, etc.)\n"
-                f"Original error: {type(error).__name__}"
-            )
-        else:
-            return (
-                f"{context} - API returned HTML error page instead of JSON\n"
-                f"This indicates an API infrastructure issue (404, 500, etc.)\n"
-                f"Original error: {type(error).__name__}: {error_msg[:200]}"
-            )
-
-    # Check for connection/retry errors
-    if isinstance(error, requests.exceptions.RetryError):
-        return (
-            f"{context} - Network connection failed\n"
-            f"Max retries exceeded connecting to API\n"
-            f"This indicates network/connectivity issues or API rate limiting\n"
-            f"Original error: {error}"
-        )
-
-    # Check for LabellerrError with error dict
-    if isinstance(error, LabellerrError):
-        error_str = str(error)
-        if "'error':" in error_str and "'code':" in error_str:
-            # Extract status code if present
-            code_match = re.search(r"'code':\s*(\d+)", error_str)
-            if code_match:
-                code = code_match.group(1)
-                return (
-                    f"{context} - API request failed\n"
-                    f"HTTP Status Code: {code}\n"
-                    f"Error details: {error_str[:500]}"
-                )
-
-    # Default: return context + original error
-    return f"{context}\nOriginal error: {type(error).__name__}: {error}"
 
 
 @pytest.fixture
@@ -113,8 +52,8 @@ def cleanup_datasets(integration_client):
         try:
             delete_dataset(integration_client, dataset_id)
         except Exception as e:
-            # Silently handle cleanup failures (dataset may already be deleted)
-            pass
+            import logging
+            logging.warning(f"Failed to cleanup dataset {dataset_id}: {e}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -339,24 +278,12 @@ class TestDatasetCreationIntegration:
             cleanup_datasets(dataset.dataset_id)
 
             # Verify multimodal indexing can be enabled
-            try:
-                result = dataset.enable_multimodal_indexing(is_multimodal=True)
-                assert result is not None
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Failed to enable multimodal indexing for dataset {dataset.dataset_id}"
-                ))
+            result = dataset.enable_multimodal_indexing(is_multimodal=True)
+            assert result is not None
 
             # Test deletion
-            try:
-                delete_result = delete_dataset(integration_client, dataset.dataset_id)
-                assert delete_result is not None
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Failed to delete dataset {dataset.dataset_id}"
-                ))
+            delete_result = delete_dataset(integration_client, dataset.dataset_id)
+            assert delete_result is not None
 
 
 @pytest.mark.integration
@@ -539,54 +466,30 @@ class TestDatasetWorkflowIntegration:
             cleanup_datasets(dataset.dataset_id)
 
             # Step 2: Fetch dataset by ID
-            try:
-                fetched_dataset = LabellerrDataset(integration_client, dataset.dataset_id)
-                assert fetched_dataset.dataset_id == dataset.dataset_id
-                assert fetched_dataset.name == dataset_config.dataset_name
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Step 2: Failed to fetch dataset by ID {dataset.dataset_id}"
-                ))
+            fetched_dataset = LabellerrDataset(integration_client, dataset.dataset_id)
+            assert fetched_dataset.dataset_id == dataset.dataset_id
+            assert fetched_dataset.name == dataset_config.dataset_name
 
             # Step 3: Check dataset status
-            try:
-                status = fetched_dataset.status(timeout=300)  # 5 min timeout
-                assert status is not None
-                assert "status_code" in status
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Step 3: Failed to check status for dataset {dataset.dataset_id}"
-                ))
+            status = fetched_dataset.status(timeout=300)  # 5 min timeout
+            assert status is not None
+            assert "status_code" in status
 
             # Step 4: List datasets and verify our dataset is in the list
-            try:
-                # Use pagination to find the dataset
-                found = False
-                for dataset_dict in list_datasets(
-                    client=integration_client,
-                    datatype="image",
-                    scope=DataSetScope.client,
-                    page_size=-1,  # Auto-paginate to check all datasets
-                ):
-                    if dataset_dict.get("dataset_id") == dataset.dataset_id:
-                        found = True
-                        break
+            # Use pagination to find the dataset
+            found = False
+            for dataset_dict in list_datasets(
+                client=integration_client,
+                datatype="image",
+                scope=DataSetScope.client,
+                page_size=-1,  # Auto-paginate to check all datasets
+            ):
+                if dataset_dict.get("dataset_id") == dataset.dataset_id:
+                    found = True
+                    break
 
-                assert found, f"Created dataset {dataset.dataset_id} not found in listing"
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Step 4: Failed to list datasets or verify dataset {dataset.dataset_id} in listing"
-                ))
+            assert found, f"Created dataset {dataset.dataset_id} not found in listing"
 
             # Step 5: Delete dataset
-            try:
-                delete_result = delete_dataset(integration_client, dataset.dataset_id)
-                assert delete_result is not None
-            except (LabellerrError, requests.exceptions.RetryError) as e:
-                pytest.fail(enhance_api_error(
-                    e,
-                    f"Step 5: Failed to delete dataset {dataset.dataset_id}"
-                ))
+            delete_result = delete_dataset(integration_client, dataset.dataset_id)
+            assert delete_result is not None
