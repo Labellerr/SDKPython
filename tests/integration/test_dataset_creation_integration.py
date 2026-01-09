@@ -6,11 +6,13 @@ and listing functionality works correctly with the Labellerr API.
 """
 
 import os
+import re
 import time
 import tempfile
 from pathlib import Path
 
 import pytest
+import requests.exceptions
 
 from labellerr.client import LabellerrClient
 from labellerr.core.datasets import (
@@ -28,35 +30,135 @@ from labellerr.core.exceptions import (
 from labellerr.core.schemas import DatasetConfig, DataSetScope
 
 
-# Module-level list to track all created datasets for cleanup
-_created_datasets = []
+def enhance_api_error(error: Exception, context: str) -> str:
+    """
+    Enhance API error messages with context for better CI diagnostics.
+
+    Args:
+        error: The original exception
+        context: Description of what operation was being performed
+
+    Returns:
+        Enhanced error message with API details
+    """
+    error_msg = str(error)
+
+    # Check for HTML error responses (API returning error pages)
+    if "<!DOCTYPE html>" in error_msg or "<html" in error_msg:
+        # Try to extract HTTP status from HTML
+        status_match = re.search(r'(\d{3})\s+([\w\s]+)', error_msg)
+        if status_match:
+            status_code = status_match.group(1)
+            status_text = status_match.group(2)
+            return (
+                f"{context} - API returned HTML error page\n"
+                f"HTTP Status: {status_code} {status_text}\n"
+                f"This indicates an API infrastructure issue (endpoint not found, server error, etc.)\n"
+                f"Original error: {type(error).__name__}"
+            )
+        else:
+            return (
+                f"{context} - API returned HTML error page instead of JSON\n"
+                f"This indicates an API infrastructure issue (404, 500, etc.)\n"
+                f"Original error: {type(error).__name__}: {error_msg[:200]}"
+            )
+
+    # Check for connection/retry errors
+    if isinstance(error, requests.exceptions.RetryError):
+        return (
+            f"{context} - Network connection failed\n"
+            f"Max retries exceeded connecting to API\n"
+            f"This indicates network/connectivity issues or API rate limiting\n"
+            f"Original error: {error}"
+        )
+
+    # Check for LabellerrError with error dict
+    if isinstance(error, LabellerrError):
+        error_str = str(error)
+        if "'error':" in error_str and "'code':" in error_str:
+            # Extract status code if present
+            code_match = re.search(r"'code':\s*(\d+)", error_str)
+            if code_match:
+                code = code_match.group(1)
+                return (
+                    f"{context} - API request failed\n"
+                    f"HTTP Status Code: {code}\n"
+                    f"Error details: {error_str[:500]}"
+                )
+
+    # Default: return context + original error
+    return f"{context}\nOriginal error: {type(error).__name__}: {error}"
 
 
-def register_dataset_for_cleanup(dataset_id: str, client: LabellerrClient):
-    """Register a dataset ID for cleanup at the end of test session"""
-    # Check if dataset_id already exists in the list of tuples
-    if dataset_id and dataset_id not in [d[0] for d in _created_datasets]:
-        _created_datasets.append((dataset_id, client))
-        print(f"  → Registered dataset {dataset_id} for cleanup")
+@pytest.fixture
+def cleanup_datasets(integration_client):
+    """
+    Fixture for automatic dataset cleanup after each test.
 
+    Usage in tests:
+        dataset = create_dataset_from_local(...)
+        cleanup_datasets(dataset.dataset_id)
+    """
+    datasets_to_cleanup = []
 
-def cleanup_all_datasets():
-    """Clean up all registered datasets"""
-    print(f"\n\nCleaning up {len(_created_datasets)} created datasets...")
-    for dataset_id, client in _created_datasets:
+    def _register(dataset_id: str):
+        """Register a dataset_id for cleanup"""
+        if dataset_id and dataset_id not in datasets_to_cleanup:
+            datasets_to_cleanup.append(dataset_id)
+
+    yield _register
+
+    # Cleanup after test completes
+    for dataset_id in datasets_to_cleanup:
         try:
-            delete_dataset(client, dataset_id)
-            print(f"  ✓ Deleted dataset: {dataset_id}")
+            delete_dataset(integration_client, dataset_id)
         except Exception as e:
-            print(f"  ✗ Failed to delete dataset {dataset_id}: {e}")
-    _created_datasets.clear()
+            # Silently handle cleanup failures (dataset may already be deleted)
+            pass
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_datasets_on_exit(request):
-    """Automatically cleanup all created datasets at end of test session"""
-    yield
-    cleanup_all_datasets()
+def verify_api_credentials_before_tests():
+    """
+    Verify API credentials are valid before running any integration tests.
+    Fails fast if credentials are missing or invalid.
+    """
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id_val = os.getenv("CLIENT_ID")
+
+    if not all([api_key, api_secret, client_id_val]):
+        pytest.skip(
+            "API credentials not configured. Set API_KEY, "
+            "API_SECRET, and CLIENT_ID environment variables."
+        )
+
+    try:
+        client = LabellerrClient(
+            api_key=api_key, api_secret=api_secret, client_id=client_id_val
+        )
+        # Make a simple API call to verify credentials work
+        list(
+            list_datasets(
+                client, datatype="image", scope=DataSetScope.client, page_size=1
+            )
+        )
+    except LabellerrError as e:
+        error_str = str(e).lower()
+        if (
+            "403" in str(e)
+            or "401" in str(e)
+            or "not authorized" in error_str
+            or "unauthorized" in error_str
+            or "invalid api key" in error_str
+        ):
+            pytest.skip(f"Invalid or expired API credentials: {e}")
+        # Let other errors propagate - they indicate real API problems
+        raise
+
+
+# Removed session-level cleanup - now using per-test fixture instead
+# This avoids double-deletion and makes cleanup more predictable
 
 
 def get_test_images_from_env(num_images: int = 3) -> list:
@@ -94,53 +196,11 @@ def get_test_images_from_env(num_images: int = 3) -> list:
     return image_files[:num_images]
 
 
-def skip_if_auth_error(e: Exception):
-    """Helper to skip tests when authentication fails or file uploads fail due to auth"""
-    error_str = str(e).lower()
-    # Check for direct auth errors
-    if "403" in str(e) or "not authorized" in error_str or "invalid api key" in error_str:
-        pytest.skip(f"API credentials invalid or expired: {e}")
-    # Check for file upload failures (which often hide auth errors in logs)
-    if "all file uploads failed" in error_str:
-        pytest.skip(f"File uploads failed (likely due to invalid credentials): {e}")
-
-
-def handle_api_errors(func):
-    """
-    Decorator to handle common API errors in integration tests.
-
-    Automatically:
-    - Skips tests on auth errors (403, invalid credentials)
-    - Skips tests on API unavailability (500, 503)
-    - Propagates other errors for proper failure reporting
-
-    Usage:
-        @handle_api_errors
-        def test_something(self, integration_client):
-            # test code
-    """
-    from functools import wraps
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except LabellerrError as e:
-            skip_if_auth_error(e)
-            if "500" in str(e) or "unavailable" in str(e).lower():
-                pytest.skip(f"API unavailable: {e}")
-            else:
-                raise
-
-    return wrapper
-
-
 @pytest.mark.integration
 class TestDatasetCreationIntegration:
     """Integration tests for dataset creation"""
 
-    @handle_api_errors
-    def test_create_dataset_from_local_folder(self, integration_client):
+    def test_create_dataset_from_local_folder(self, integration_client, cleanup_datasets):
         """
         Comprehensive test: dataset creation, all properties validation, and property types.
         Tests:
@@ -170,67 +230,50 @@ class TestDatasetCreationIntegration:
                 data_type="image",
             )
 
-            dataset_id = None
+            # Create dataset from local folder
+            dataset = create_dataset_from_local(
+                client=integration_client,
+                dataset_config=dataset_config,
+                folder_to_upload=tmpdir,
+            )
 
-            try:
-                # Create dataset from local folder
-                dataset = create_dataset_from_local(
-                    client=integration_client,
-                    dataset_config=dataset_config,
-                    folder_to_upload=tmpdir,
-                )
+            # Register for automatic cleanup
+            cleanup_datasets(dataset.dataset_id)
 
-                dataset_id = dataset.dataset_id
-                # Register for cleanup
-                register_dataset_for_cleanup(dataset_id, integration_client)
+            # Verify dataset was created
+            assert dataset is not None
+            assert dataset.dataset_id is not None
+            assert dataset.name == dataset_config.dataset_name
 
-                # Verify dataset was created
-                assert dataset is not None
-                assert dataset.dataset_id is not None
-                assert dataset.name == dataset_config.dataset_name
+            # Test all property accessors
+            assert dataset.data_type == "image"
+            assert hasattr(dataset, 'files_count')
+            assert hasattr(dataset, 'status_code')
+            assert hasattr(dataset, 'description')
+            assert hasattr(dataset, 'created_at')
+            assert hasattr(dataset, 'created_by')
 
-                # Test all property accessors
-                assert dataset.data_type == "image"
-                assert hasattr(dataset, 'files_count')
-                assert hasattr(dataset, 'status_code')
-                assert hasattr(dataset, 'description')
-                assert hasattr(dataset, 'created_at')
-                assert hasattr(dataset, 'created_by')
+            # Validate property types
+            assert isinstance(dataset.dataset_id, str)
+            assert isinstance(dataset.data_type, str)
+            assert isinstance(dataset.files_count, int)
+            assert isinstance(dataset.status_code, int)
+            if dataset.name is not None:
+                assert isinstance(dataset.name, str)
 
-                # Validate property types
-                assert isinstance(dataset.dataset_id, str)
-                assert isinstance(dataset.data_type, str)
-                assert isinstance(dataset.files_count, int)
-                assert isinstance(dataset.status_code, int)
-                if dataset.name is not None:
-                    assert isinstance(dataset.name, str)
+            # Print properties for verification
+            print(f"\nDataset Properties:")
+            print(f"  ID: {dataset.dataset_id}")
+            print(f"  Name: {dataset.name}")
+            print(f"  Data Type: {dataset.data_type}")
+            print(f"  Files Count: {dataset.files_count}")
+            print(f"  Status Code: {dataset.status_code}")
+            print(f"  Description: {dataset.description}")
 
-                # Print properties for verification
-                print(f"\nDataset Properties:")
-                print(f"  ID: {dataset.dataset_id}")
-                print(f"  Name: {dataset.name}")
-                print(f"  Data Type: {dataset.data_type}")
-                print(f"  Files Count: {dataset.files_count}")
-                print(f"  Status Code: {dataset.status_code}")
-                print(f"  Description: {dataset.description}")
+            # Wait for dataset processing
+            status = dataset.status(timeout=300)  # 5 min timeout
+            assert status is not None
 
-                # Wait for dataset processing
-                status = dataset.status()
-                assert status is not None
-
-                # Clean up - delete the dataset
-                delete_result = delete_dataset(integration_client, dataset_id)
-                assert delete_result is not None
-                dataset_id = None
-
-            finally:
-                if dataset_id:
-                    try:
-                        delete_dataset(integration_client, dataset_id)
-                    except Exception:
-                        pass
-
-    @handle_api_errors
     def test_create_dataset_from_connection_with_existing_connection(
         self, integration_client, test_credentials, test_project_ids
     ):
@@ -262,8 +305,7 @@ class TestDatasetCreationIntegration:
         # Clean up
         delete_dataset(integration_client, dataset.dataset_id)
 
-    @handle_api_errors
-    def test_create_dataset_with_multimodal_indexing(self, integration_client):
+    def test_create_dataset_with_multimodal_indexing(self, integration_client, cleanup_datasets):
         """
         Comprehensive test: multimodal indexing and dataset deletion.
         Tests dataset creation with multimodal indexing, then verifies deletion works correctly.
@@ -283,39 +325,38 @@ class TestDatasetCreationIntegration:
                 multimodal_indexing=True,
             )
 
-            dataset_id = None
+            # Create dataset with multimodal indexing
+            dataset = create_dataset_from_local(
+                client=integration_client,
+                dataset_config=dataset_config,
+                folder_to_upload=tmpdir,
+            )
 
+            assert dataset is not None
+            assert dataset.dataset_id is not None
+
+            # Register for automatic cleanup
+            cleanup_datasets(dataset.dataset_id)
+
+            # Verify multimodal indexing can be enabled
             try:
-                # Create dataset with multimodal indexing
-                dataset = create_dataset_from_local(
-                    client=integration_client,
-                    dataset_config=dataset_config,
-                    folder_to_upload=tmpdir,
-                )
-
-                assert dataset is not None
-                dataset_id = dataset.dataset_id
-                assert dataset_id is not None
-                # Register for cleanup
-                register_dataset_for_cleanup(dataset_id, integration_client)
-
-                # Verify multimodal indexing can be enabled
                 result = dataset.enable_multimodal_indexing(is_multimodal=True)
                 assert result is not None
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Failed to enable multimodal indexing for dataset {dataset.dataset_id}"
+                ))
 
-                # Test deletion
-                delete_result = delete_dataset(integration_client, dataset_id)
+            # Test deletion
+            try:
+                delete_result = delete_dataset(integration_client, dataset.dataset_id)
                 assert delete_result is not None
-
-                # Mark as deleted (don't verify by fetching as API may return 500 errors)
-                dataset_id = None
-
-            finally:
-                if dataset_id:
-                    try:
-                        delete_dataset(integration_client, dataset_id)
-                    except Exception:
-                        pass
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Failed to delete dataset {dataset.dataset_id}"
+                ))
 
 
 @pytest.mark.integration
@@ -336,27 +377,33 @@ class TestDatasetValidationIntegration:
                 LabellerrDataset(integration_client, invalid_id)
 
     def test_valid_uuid_format_but_nonexistent_dataset(self, integration_client):
-        """Test that valid UUID format but non-existent dataset returns proper error"""
+        """
+        Test that valid UUID format but non-existent dataset returns proper error.
+
+        Note: API may return 500 errors for certain nonexistent IDs (infrastructure issue),
+        which causes retry exhaustion. We accept either proper error response or retry error.
+        """
         nonexistent_id = "00000000-0000-0000-0000-000000000000"
 
         try:
-            # This should fail because the dataset doesn't exist
-            with pytest.raises((InvalidDatasetError, LabellerrError)) as exc_info:
-                dataset = LabellerrDataset(integration_client, nonexistent_id)
+            with pytest.raises((InvalidDatasetError, LabellerrError, requests.exceptions.RetryError)) as exc_info:
+                LabellerrDataset(integration_client, nonexistent_id)
 
-            # Skip if we got auth error
-            if exc_info.value:
-                skip_if_auth_error(exc_info.value)
+            # Verify it's not an auth error (credentials were validated upfront)
+            error_msg = str(exc_info.value).lower()
 
-            # Verify error message mentions dataset not found
-            assert "not found" in str(exc_info.value).lower() or "dataset" in str(exc_info.value).lower()
+            # Check for auth errors
+            if "403" in error_msg or "unauthorized" in error_msg:
+                pytest.fail("Got auth error instead of not found - credentials issue")
+
+            # Accept any error (404, 500, retry error) as valid for nonexistent dataset
+            assert any(
+                x in error_msg for x in ["not found", "dataset", "error", "500", "retry", "max retries"]
+            ), f"Expected error for nonexistent dataset, got: {exc_info.value}"
 
         except Exception as e:
-            # If we get RetryError or 500 errors, that's expected for non-existent datasets
-            if "RetryError" in str(type(e).__name__) or "500" in str(e):
-                pass  # Expected
-            else:
-                raise
+            # Unexpected exception type
+            pytest.fail(f"Unexpected exception type: {type(e).__name__}: {e}")
 
     def test_empty_dataset_id_rejected(self, integration_client):
         """Test that empty dataset_id is rejected"""
@@ -383,7 +430,6 @@ class TestDatasetDeletionIntegration:
 class TestDatasetListingIntegration:
     """Integration tests for dataset listing"""
 
-    @handle_api_errors
     def test_list_datasets_client_scope(self, integration_client):
         """Test listing datasets with client scope"""
         datasets = list(list_datasets(
@@ -402,7 +448,6 @@ class TestDatasetListingIntegration:
                 assert "dataset_id" in dataset
                 # May have other fields like name, data_type, etc.
 
-    @handle_api_errors
     def test_list_datasets_auto_pagination(self, integration_client):
         """Test listing datasets with auto-pagination (page_size=-1)"""
         datasets = list(list_datasets(
@@ -415,7 +460,6 @@ class TestDatasetListingIntegration:
         # Should return a list
         assert isinstance(datasets, list)
 
-    @handle_api_errors
     def test_list_datasets_different_data_types(self, integration_client):
         """Test listing datasets for different data types"""
         data_types = ["image", "video", "document"]
@@ -430,7 +474,6 @@ class TestDatasetListingIntegration:
 
             assert isinstance(datasets, list)
 
-    @handle_api_errors
     def test_list_datasets_project_scope(self, integration_client):
         """Test listing datasets with project scope"""
         datasets = list(list_datasets(
@@ -448,79 +491,23 @@ class TestDatasetListingIntegration:
 class TestDatasetWorkflowIntegration:
     """Integration tests for complete dataset workflows"""
 
-    @handle_api_errors
-    def test_dataset_update_operations(self, integration_client):
+    @pytest.mark.skip(reason="Update operations not yet implemented - placeholder for future feature")
+    def test_dataset_update_operations_not_implemented(self):
         """
-        Test dataset update operations: name, description, and metadata.
+        Placeholder test for dataset update operations.
 
-        NOTE: This test currently documents that update operations are NOT YET IMPLEMENTED.
-        When update functionality is added to the SDK, this test will validate it.
-        For now, it verifies that datasets can be created and their properties accessed.
+        When update APIs are available, this test should verify:
+        - update_name()
+        - update_description()
+        - update_metadata()
+        - add_files()
+        - remove_files()
+
+        TODO: Implement when update APIs are available
         """
-        # Get real test images
-        test_images = get_test_images_from_env(num_images=1)
+        pass
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            import shutil
-
-            # Copy real image to temp directory
-            shutil.copy2(test_images[0], tmpdir)
-
-            dataset_config = DatasetConfig(
-                dataset_name=f"Update Test Dataset {int(time.time())}",
-                dataset_description="Original description for update testing",
-                data_type="image",
-            )
-
-            dataset_id = None
-
-            try:
-                # Create dataset
-                dataset = create_dataset_from_local(
-                    client=integration_client,
-                    dataset_config=dataset_config,
-                    folder_to_upload=tmpdir,
-                )
-
-                assert dataset is not None
-                dataset_id = dataset.dataset_id
-                assert dataset_id is not None
-                # Register for cleanup
-                register_dataset_for_cleanup(dataset_id, integration_client)
-
-                # Verify original properties are accessible
-                assert dataset.name == dataset_config.dataset_name
-                assert dataset.data_type == "image"
-
-                # Document what update operations are NOT YET IMPLEMENTED:
-                print(f"\n⚠ Update operations not yet implemented in SDK:")
-                print(f"  - update_name() - method does not exist")
-                print(f"  - update_description() - method does not exist")
-                print(f"  - update_metadata() - method does not exist")
-                print(f"  - add_files() - method does not exist")
-                print(f"  - remove_files() - method does not exist")
-
-                # Verify that these methods don't exist (expected)
-                assert not hasattr(dataset, 'update_name'), "update_name unexpectedly exists"
-                assert not hasattr(dataset, 'update_description'), "update_description unexpectedly exists"
-                assert not hasattr(dataset, 'update_metadata'), "update_metadata unexpectedly exists"
-                assert not hasattr(dataset, 'add_files'), "add_files unexpectedly exists"
-                assert not hasattr(dataset, 'remove_files'), "remove_files unexpectedly exists"
-
-                # Clean up
-                delete_result = delete_dataset(integration_client, dataset_id)
-                assert delete_result is not None
-                dataset_id = None
-
-            finally:
-                if dataset_id:
-                    try:
-                        delete_dataset(integration_client, dataset_id)
-                    except Exception:
-                        pass
-
-    @handle_api_errors
-    def test_complete_dataset_lifecycle(self, integration_client):
+    def test_complete_dataset_lifecycle(self, integration_client, cleanup_datasets):
         """Test complete dataset lifecycle: create, fetch, list, and delete"""
         # Get real test images
         test_images = get_test_images_from_env(num_images=2)
@@ -538,54 +525,68 @@ class TestDatasetWorkflowIntegration:
                 data_type="image",
             )
 
-            dataset_id = None
+            # Step 1: Create dataset
+            dataset = create_dataset_from_local(
+                client=integration_client,
+                dataset_config=dataset_config,
+                folder_to_upload=tmpdir,
+            )
 
+            assert dataset is not None
+            assert dataset.dataset_id is not None
+
+            # Register for automatic cleanup
+            cleanup_datasets(dataset.dataset_id)
+
+            # Step 2: Fetch dataset by ID
             try:
-                # Step 1: Create dataset
-                dataset = create_dataset_from_local(
-                    client=integration_client,
-                    dataset_config=dataset_config,
-                    folder_to_upload=tmpdir,
-                )
-
-                assert dataset is not None
-                dataset_id = dataset.dataset_id
-                assert dataset_id is not None
-                # Register for cleanup
-                register_dataset_for_cleanup(dataset_id, integration_client)
-
-                # Step 2: Fetch dataset by ID
-                fetched_dataset = LabellerrDataset(integration_client, dataset_id)
-                assert fetched_dataset.dataset_id == dataset_id
+                fetched_dataset = LabellerrDataset(integration_client, dataset.dataset_id)
+                assert fetched_dataset.dataset_id == dataset.dataset_id
                 assert fetched_dataset.name == dataset_config.dataset_name
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Step 2: Failed to fetch dataset by ID {dataset.dataset_id}"
+                ))
 
-                # Step 3: Check dataset status
-                status = fetched_dataset.status()
+            # Step 3: Check dataset status
+            try:
+                status = fetched_dataset.status(timeout=300)  # 5 min timeout
                 assert status is not None
                 assert "status_code" in status
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Step 3: Failed to check status for dataset {dataset.dataset_id}"
+                ))
 
-                # Step 4: List datasets and verify our dataset is in the list
-                datasets = list(list_datasets(
+            # Step 4: List datasets and verify our dataset is in the list
+            try:
+                # Use pagination to find the dataset
+                found = False
+                for dataset_dict in list_datasets(
                     client=integration_client,
                     datatype="image",
                     scope=DataSetScope.client,
-                    page_size=20,
+                    page_size=-1,  # Auto-paginate to check all datasets
+                ):
+                    if dataset_dict.get("dataset_id") == dataset.dataset_id:
+                        found = True
+                        break
+
+                assert found, f"Created dataset {dataset.dataset_id} not found in listing"
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Step 4: Failed to list datasets or verify dataset {dataset.dataset_id} in listing"
                 ))
 
-                dataset_ids = [d.get("dataset_id") for d in datasets]
-                # Our dataset might or might not be in the first page
-                # So we just verify the list operation worked
-
-                # Step 5: Delete dataset
-                delete_result = delete_dataset(integration_client, dataset_id)
+            # Step 5: Delete dataset
+            try:
+                delete_result = delete_dataset(integration_client, dataset.dataset_id)
                 assert delete_result is not None
-
-                dataset_id = None  # Mark as deleted
-
-            finally:
-                # Cleanup: ensure dataset is deleted even if test fails
-                if dataset_id:
-                    try:
-                        delete_dataset(integration_client, dataset_id)
-                    except Exception:
-                        pass  # Ignore cleanup errors
+            except (LabellerrError, requests.exceptions.RetryError) as e:
+                pytest.fail(enhance_api_error(
+                    e,
+                    f"Step 5: Failed to delete dataset {dataset.dataset_id}"
+                ))

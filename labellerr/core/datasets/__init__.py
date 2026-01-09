@@ -121,14 +121,17 @@ def delete_dataset(client: "LabellerrClient", dataset_id: str):
     :raises LabellerrError: If the deletion fails
     """
     unique_id = str(uuid.uuid4())
-    url = f"{constants.BASE_URL}/datasets/{dataset_id}/delete?client_id={client.client_id}&uuid={unique_id}"
+    url = f"{constants.BASE_URL}/datasets/delete?client_id={client.client_id}&uuid={unique_id}"
 
-    return client.make_request(
-        "DELETE",
+    response = client.make_request(
+        "POST",
         url,
         extra_headers={"content-type": "application/json"},
         request_id=unique_id,
+        json={"dataset_id": dataset_id},
     )
+    # Return the whole response since response.get("response") might be None
+    return response
 
 
 def list_datasets(

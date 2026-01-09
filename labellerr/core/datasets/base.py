@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from abc import ABCMeta
-from typing import Dict, Any, Generator, TYPE_CHECKING
+from typing import Dict, Any, Generator, Optional, TYPE_CHECKING
 
 from .. import constants
 from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDError
@@ -113,14 +113,19 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
     def data_type(self):
         return self.__dataset_data.get("data_type")
 
-    def status(self) -> Dict[str, Any]:
+    def status(
+        self,
+        interval: float = 2.0,
+        timeout: Optional[float] = None,
+        max_retries: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Poll dataset status until completion or timeout.
 
         Args:
             interval: Time in seconds between status checks (default: 2.0)
-            timeout: Maximum time in seconds to poll before giving up
-            max_retries: Maximum number of retries before giving up
+            timeout: Maximum time in seconds to poll before giving up (default: None - no timeout)
+            max_retries: Maximum number of retries before giving up (default: None - no retry limit)
 
         Returns:
             Final dataset data with status information
@@ -177,9 +182,9 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         return poll(
             function=get_dataset_status,
             condition=is_completed,
-            interval=2.0,
-            timeout=None,
-            max_retries=None,
+            interval=interval,
+            timeout=timeout,
+            max_retries=max_retries,
             on_success=on_success,
         )
 
