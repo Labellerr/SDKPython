@@ -25,53 +25,64 @@ from labellerr.core.exceptions import LabellerrError
 load_dotenv()
 
 
-# Module-level list to track all created templates for cleanup
-_created_templates = []
+@pytest.fixture
+def cleanup_templates():
+    """
+    Fixture for automatic template cleanup after each test.
 
+    Note: Template deletion is not yet implemented in SDK,
+    so this fixture tracks templates but cannot delete them.
 
-def register_template_for_cleanup(template_id: str, client: LabellerrClient):
-    """Register a template ID for cleanup at the end of test session"""
-    if template_id and template_id not in [t[0] for t in _created_templates]:
-        _created_templates.append((template_id, client))
-        print(f"  → Registered template {template_id} for cleanup")
+    Usage in tests:
+        template = create_template(...)
+        cleanup_templates(template.annotation_template_id)
+    """
+    templates_to_cleanup = []
 
+    def _register(template_id: str):
+        """Register a template_id for cleanup"""
+        if template_id and template_id not in templates_to_cleanup:
+            templates_to_cleanup.append(template_id)
 
-def cleanup_all_templates():
-    """Clean up all registered templates"""
-    if not _created_templates:
-        print("\n\nNo templates to clean up.")
-        return
+    yield _register
 
-    print(f"\n\nCleaning up {len(_created_templates)} created templates...")
-    print("\n⚠ Template deletion is NOT YET IMPLEMENTED in SDK")
-    print("Templates will remain in the system:")
-    for template_id, client in _created_templates:
-        print(f"  • Template ID: {template_id}")
-    _created_templates.clear()
+    # Note: Cleanup not possible yet - template deletion API not implemented
+    if templates_to_cleanup:
+        print(f"\n⚠ Template deletion not yet implemented - {len(templates_to_cleanup)} template(s) remain in system")
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_templates_on_exit(request):
-    """Automatically cleanup all created templates at end of test session"""
-    yield
-    cleanup_all_templates()
+def verify_api_credentials_before_tests():
+    """
+    Verify API credentials are valid before running any integration tests.
+    Fails fast if credentials are missing or invalid.
+    """
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id_val = os.getenv("CLIENT_ID")
 
+    if not all([api_key, api_secret, client_id_val]):
+        pytest.skip(
+            "API credentials not configured. Set API_KEY, "
+            "API_SECRET, and CLIENT_ID environment variables."
+        )
 
-def skip_if_auth_error(func):
-    """Decorator to skip test if authentication fails"""
-    from functools import wraps
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except LabellerrError as e:
-            error_message = str(e)
-            if "401" in error_message or "authentication" in error_message.lower():
-                pytest.skip(f"Authentication failed: {error_message}")
-            raise
-
-    return wrapper
+    try:
+        client = LabellerrClient(api_key, api_secret, client_id_val)
+        # Make a simple API call to verify credentials work
+        list_templates(client, DatasetDataType.image)
+    except LabellerrError as e:
+        error_str = str(e).lower()
+        if (
+            "403" in str(e)
+            or "401" in str(e)
+            or "not authorized" in error_str
+            or "unauthorized" in error_str
+            or "invalid api key" in error_str
+        ):
+            pytest.skip(f"Invalid or expired API credentials: {e}")
+        # Let other errors propagate - they indicate real API problems
+        raise
 
 
 @pytest.fixture(scope="module")
@@ -93,14 +104,13 @@ def integration_client():
 class TestTemplateCreationIntegration:
     """Integration tests for template creation with real API calls"""
 
-    @skip_if_auth_error
-    def test_create_template_single_bbox_question(self, integration_client):
+    def test_create_template_single_bbox_question(self, integration_client, cleanup_templates):
         """
         Test creating a template with a single bounding box question.
         Verifies template creation with geometric annotation type.
         """
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_BBox_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=f"SDK_Test_BBox_Template_{uuid.uuid4().hex[:8]}",
             data_type=DatasetDataType.image,
             questions=[
                 AnnotationQuestion(
@@ -114,9 +124,7 @@ class TestTemplateCreationIntegration:
         )
 
         template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            template.annotation_template_id, integration_client
-        )
+        cleanup_templates(template.annotation_template_id)
 
         # Validate template was created
         assert template is not None
@@ -126,8 +134,7 @@ class TestTemplateCreationIntegration:
 
         print(f"\n✓ Created template: {template.annotation_template_id}")
 
-    @skip_if_auth_error
-    def test_create_template_multiple_questions(self, integration_client):
+    def test_create_template_multiple_questions(self, integration_client, cleanup_templates):
         """
         Test creating a template with multiple questions of different types.
         Verifies:
@@ -136,7 +143,7 @@ class TestTemplateCreationIntegration:
         - Boolean type (yes/no question)
         """
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_Multi_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=f"SDK_Test_Multi_Template_{uuid.uuid4().hex[:8]}",
             data_type=DatasetDataType.image,
             questions=[
                 AnnotationQuestion(
@@ -169,22 +176,19 @@ class TestTemplateCreationIntegration:
         )
 
         template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            template.annotation_template_id, integration_client
-        )
+        cleanup_templates(template.annotation_template_id)
 
         assert template is not None
         assert template.annotation_template_id is not None
         print(f"\n✓ Created multi-question template: {template.annotation_template_id}")
 
-    @skip_if_auth_error
-    def test_create_template_all_geometric_types(self, integration_client):
+    def test_create_template_all_geometric_types(self, integration_client, cleanup_templates):
         """
         Test creating a template with ALL geometric question types in one template.
         Tests: bounding_box, polygon, polyline, dot
         """
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_AllGeometric_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=f"SDK_Test_AllGeometric_Template_{uuid.uuid4().hex[:8]}",
             data_type=DatasetDataType.image,
             questions=[
                 AnnotationQuestion(
@@ -219,9 +223,7 @@ class TestTemplateCreationIntegration:
         )
 
         template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            template.annotation_template_id, integration_client
-        )
+        cleanup_templates(template.annotation_template_id)
 
         assert template is not None
         assert template.annotation_template_id is not None
@@ -229,14 +231,13 @@ class TestTemplateCreationIntegration:
             f"\n✓ Created template with all geometric types: {template.annotation_template_id}"
         )
 
-    @skip_if_auth_error
-    def test_create_template_all_choice_and_input_types(self, integration_client):
+    def test_create_template_all_choice_and_input_types(self, integration_client, cleanup_templates):
         """
         Test creating a template with ALL choice and input question types.
         Tests: radio, boolean, select, dropdown, input
         """
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_AllChoice_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=f"SDK_Test_AllChoice_Template_{uuid.uuid4().hex[:8]}",
             data_type=DatasetDataType.image,
             questions=[
                 AnnotationQuestion(
@@ -285,9 +286,7 @@ class TestTemplateCreationIntegration:
         )
 
         template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            template.annotation_template_id, integration_client
-        )
+        cleanup_templates(template.annotation_template_id)
 
         assert template is not None
         assert template.annotation_template_id is not None
@@ -295,8 +294,7 @@ class TestTemplateCreationIntegration:
             f"\n✓ Created template with all choice and input types: {template.annotation_template_id}"
         )
 
-    @skip_if_auth_error
-    def test_list_templates_and_all_data_types(self, integration_client):
+    def test_list_templates_and_all_data_types(self, integration_client, cleanup_templates):
         """
         Test listing templates for all data types and verify list functionality.
         Creates one template for video data type, then lists all data types.
@@ -304,7 +302,7 @@ class TestTemplateCreationIntegration:
         """
         # Create one template for video to test a different data type
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_Video_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=f"SDK_Test_Video_Template_{uuid.uuid4().hex[:8]}",
             data_type=DatasetDataType.video,
             questions=[
                 AnnotationQuestion(
@@ -318,9 +316,7 @@ class TestTemplateCreationIntegration:
         )
 
         created_template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            created_template.annotation_template_id, integration_client
-        )
+        cleanup_templates(created_template.annotation_template_id)
 
         print(f"\n✓ Created video template: {created_template.annotation_template_id}")
 
@@ -454,22 +450,38 @@ class TestTemplateValidationIntegration:
 class TestTemplatePropertiesIntegration:
     """Integration tests for template properties and operations"""
 
-    @skip_if_auth_error
-    def test_template_update_operations_not_implemented(self, integration_client):
+    @pytest.mark.skip(reason="Template update/delete operations not yet implemented - placeholder for future feature")
+    def test_template_update_operations_not_implemented(self):
         """
-        Test template update operations.
+        Placeholder test for template update operations.
 
-        NOTE: This test documents that update/delete operations are NOT YET IMPLEMENTED.
-        When these features are added to the SDK, this test will validate them.
+        When update APIs are available, this test should verify:
+        - update_name()
+        - update_questions()
+        - add_question()
+        - remove_question()
+        - delete_template()
+
+        TODO: Implement when update APIs are available
         """
-        # Create a template
+        pass
+
+    def test_get_template_by_id(self, integration_client, cleanup_templates):
+        """
+        Test retrieving a template by ID.
+        Creates a template and then fetches it by ID to verify retrieval.
+        """
+        from labellerr.core.annotation_templates.base import LabellerrAnnotationTemplate
+
+        # Create a new template for this test
+        template_name = f"SDK_Test_Fetch_Template_{uuid.uuid4().hex[:8]}"
         params = CreateTemplateParams(
-            template_name=f"SDK_Test_Update_Template_{int(uuid.uuid4().hex[:8], 16)}",
+            template_name=template_name,
             data_type=DatasetDataType.image,
             questions=[
                 AnnotationQuestion(
                     question_number=1,
-                    question="Initial question",
+                    question="Test question for fetch",
                     question_type=QuestionType.boolean,
                     required=True,
                     options=[Option(option_name="Yes"), Option(option_name="No")],
@@ -477,65 +489,10 @@ class TestTemplatePropertiesIntegration:
             ],
         )
 
-        template = create_template(integration_client, params)
-        register_template_for_cleanup(
-            template.annotation_template_id, integration_client
-        )
-
-        # Document what operations are NOT YET IMPLEMENTED:
-        print("\n⚠ Template operations not yet implemented in SDK:")
-        print("  - update_name() - method does not exist")
-        print("  - update_questions() - method does not exist")
-        print("  - add_question() - method does not exist")
-        print("  - remove_question() - method does not exist")
-        print("  - delete_template() - function does not exist")
-
-        # Verify that these methods don't exist (expected)
-        assert not hasattr(template, "update_name"), "update_name unexpectedly exists"
-        assert not hasattr(
-            template, "update_questions"
-        ), "update_questions unexpectedly exists"
-        assert not hasattr(template, "add_question"), "add_question unexpectedly exists"
-        assert not hasattr(
-            template, "remove_question"
-        ), "remove_question unexpectedly exists"
-
-        print("\n✓ Confirmed that update/delete operations are not yet implemented")
-
-    @skip_if_auth_error
-    def test_get_template_by_id(self, integration_client):
-        """
-        Test retrieving a template by ID.
-        Uses an existing template ID from _created_templates or creates one.
-        """
-        from labellerr.core.annotation_templates.base import LabellerrAnnotationTemplate
-
-        # Check if we have any templates registered from previous tests
-        if _created_templates:
-            # Reuse a template that was already created
-            template_id, _ = _created_templates[0]
-            print(f"\n→ Using existing template from registry: {template_id}")
-        else:
-            # Create a new template if none exist yet
-            template_name = f"SDK_Test_Fetch_Template_{int(uuid.uuid4().hex[:8], 16)}"
-            params = CreateTemplateParams(
-                template_name=template_name,
-                data_type=DatasetDataType.image,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="Test question for fetch",
-                        question_type=QuestionType.boolean,
-                        required=True,
-                        options=[Option(option_name="Yes"), Option(option_name="No")],
-                    )
-                ],
-            )
-
-            created_template = create_template(integration_client, params)
-            template_id = created_template.annotation_template_id
-            register_template_for_cleanup(template_id, integration_client)
-            print(f"\n→ Created new template for fetch test: {template_id}")
+        created_template = create_template(integration_client, params)
+        template_id = created_template.annotation_template_id
+        cleanup_templates(template_id)
+        print(f"\n→ Created template for fetch test: {template_id}")
 
         # Fetch raw data from API
         raw_data = LabellerrAnnotationTemplate.get_annotation_template(
