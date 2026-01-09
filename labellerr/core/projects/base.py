@@ -79,6 +79,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         return self.__project_id_input
 
     @property
+    def project_name(self):
+        return self.__project_data.get("project_name")
+
+    @property
     def status_code(self):
         return self.__project_data.get("status_code", 501)  # if not found, return 501
 
