@@ -4,7 +4,6 @@ Export class for handling export operations with status tracking and polling.
 
 from typing import TYPE_CHECKING, Dict, Any, Optional
 import logging
-import json
 
 if TYPE_CHECKING:
     from ..projects.base import LabellerrProject

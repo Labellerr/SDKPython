@@ -29,13 +29,11 @@ class LabellerrDatasetMeta(ABCMeta):
     @staticmethod
     def get_dataset(client: "LabellerrClient", dataset_id: str):
         """Get dataset from Labellerr API"""
-        # Validate dataset_id format (should be a valid UUID)
-        if not dataset_id:
-            raise InvalidDatasetIDError("Dataset ID cannot be None or empty")
-        try:
-            uuid.UUID(dataset_id)
-        except (ValueError, TypeError):
-            raise InvalidDatasetIDError(f"Invalid dataset ID format: {dataset_id}")
+        # Validate dataset_id is not None or empty
+        if not isinstance(dataset_id, str) or not dataset_id.strip():
+            raise InvalidDatasetIDError(
+                "Dataset ID cannot be None or empty and must be a non-empty string"
+            )
 
         unique_id = str(uuid.uuid4())
         url = (
@@ -63,7 +61,10 @@ class LabellerrDatasetMeta(ABCMeta):
             return instance
         dataset_data = cls.get_dataset(client, dataset_id)
         if dataset_data is None:
-            raise InvalidDatasetError(f"Dataset not found: {dataset_id}")
+            raise InvalidDatasetError(
+                f"Dataset not found with ID: '{dataset_id}'. "
+                f"Please verify the dataset_id is correct and exists in your workspace."
+            )
         data_type = dataset_data.get("data_type")
 
         dataset_class = cls._registry.get(data_type)
