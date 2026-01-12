@@ -31,7 +31,9 @@ class LabellerrDatasetMeta(ABCMeta):
         """Get dataset from Labellerr API"""
         # Validate dataset_id is not None or empty
         if not isinstance(dataset_id, str) or not dataset_id.strip():
-            raise InvalidDatasetIDError("Dataset ID cannot be None or empty and must be a non-empty string")
+            raise InvalidDatasetIDError(
+                "Dataset ID cannot be None or empty and must be a non-empty string"
+            )
 
         unique_id = str(uuid.uuid4())
         url = (
