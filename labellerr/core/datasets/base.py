@@ -7,7 +7,7 @@ from abc import ABCMeta
 from typing import Dict, Any, Generator, TYPE_CHECKING
 
 from .. import constants
-from ..exceptions import InvalidDatasetError, LabellerrError
+from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDError
 from ..client import LabellerrClient
 
 from ..files import LabellerrFile
@@ -29,6 +29,12 @@ class LabellerrDatasetMeta(ABCMeta):
     @staticmethod
     def get_dataset(client: "LabellerrClient", dataset_id: str):
         """Get dataset from Labellerr API"""
+        # Validate dataset_id is not None or empty
+        if not isinstance(dataset_id, str) or not dataset_id.strip():
+            raise InvalidDatasetIDError(
+                "Dataset ID cannot be None or empty and must be a non-empty string"
+            )
+
         unique_id = str(uuid.uuid4())
         url = (
             f"{constants.BASE_URL}/datasets/{dataset_id}?client_id={client.client_id}"
@@ -55,7 +61,10 @@ class LabellerrDatasetMeta(ABCMeta):
             return instance
         dataset_data = cls.get_dataset(client, dataset_id)
         if dataset_data is None:
-            raise InvalidDatasetError(f"Dataset not found: {dataset_id}")
+            raise InvalidDatasetError(
+                f"Dataset not found with ID: '{dataset_id}'. "
+                f"Please verify the dataset_id is correct and exists in your workspace."
+            )
         data_type = dataset_data.get("data_type")
 
         dataset_class = cls._registry.get(data_type)
