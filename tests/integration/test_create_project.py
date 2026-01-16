@@ -7,8 +7,10 @@ the create_project, list_projects, and delete_project functions end-to-end.
 
 import os
 import time
+import time
 
 import pytest
+from dotenv import load_dotenv
 from dotenv import load_dotenv
 
 from labellerr.client import LabellerrClient
@@ -390,6 +392,8 @@ class TestCreateProjectIntegration:
             "CustomRotation",
             email_id,
             rotations=RotationConfig(
+                annotation_rotation_count=3,
+                review_rotation_count=2,
                 annotation_rotation_count=3,
                 review_rotation_count=2,
                 client_review_rotation_count=1,

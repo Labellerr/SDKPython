@@ -137,31 +137,6 @@ def list_projects(client: "LabellerrClient"):
             f"Invalid response data type: expected list, got {type(response_data)}"
         )
 
-    # Handle different response formats
-    if isinstance(response, list):
-        # Response is directly a list of projects
-        projects = response
-    elif isinstance(response, dict) and "response" in response:
-        # Response is wrapped in a response object
-        inner_response = response["response"]
-        if isinstance(inner_response, list):
-            # Inner response is directly a list
-            projects = inner_response
-        elif isinstance(inner_response, dict):
-            # Inner response is a dict with projects key
-            projects = inner_response.get("projects", [])
-        else:
-            projects = []
-    else:
-        # Fallback to empty list
-        projects = []
-
-    return [
-        LabellerrProject(client, project_id=project["project_id"])
-        for project in projects
-    ]
-
-
     def _instantiate_project(project_data):
         try:
             # Validate project_data structure
