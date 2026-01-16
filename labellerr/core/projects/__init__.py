@@ -111,3 +111,22 @@ def list_projects(client: "LabellerrClient"):
         ]
 
     return projects
+
+
+def delete_project(client: "LabellerrClient", project: LabellerrProject):
+    """
+    Deletes a project from the Labellerr API.
+
+    :param client: The client instance.
+    :param project: The project instance.
+    :return: The response from the API.
+    """
+    unique_id = str(uuid.uuid4())
+    url = f"{constants.BASE_URL}/projects/delete/{project.project_id}?client_id={client.client_id}&uuid={unique_id}"
+
+    return client.make_request(
+        "POST",
+        url,
+        extra_headers={"content-type": "application/json"},
+        request_id=unique_id,
+    )
