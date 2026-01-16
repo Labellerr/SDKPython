@@ -52,6 +52,7 @@ def mock_annotation_template():
 def client():
     """Create a mock LabellerrClient"""
     from labellerr import LabellerrClient
+
     mock_client = Mock(spec=LabellerrClient)
     mock_client.client_id = "test-client-id"
     mock_client.api_key = "test-api-key"
@@ -688,7 +689,9 @@ class TestDeleteProjectUnit:
             url = call_args[0][1]
             assert "/projects/delete/" in url, "URL should contain /projects/delete/"
             assert mock_project.project_id in url, "URL should contain project_id"
-            assert f"client_id={client.client_id}" in url, "URL should contain client_id"
+            assert (
+                f"client_id={client.client_id}" in url
+            ), "URL should contain client_id"
             assert "uuid=" in url, "URL should contain uuid parameter"
 
     def test_delete_project_headers(self, client, mock_project):
@@ -714,9 +717,13 @@ class TestDeleteProjectUnit:
     def test_delete_project_connection_error(self, client, mock_project):
         """Test handling of connection errors during deletion"""
         with patch.object(client, "make_request") as mock_request:
-            mock_request.side_effect = requests.exceptions.ConnectionError("Connection refused")
+            mock_request.side_effect = requests.exceptions.ConnectionError(
+                "Connection refused"
+            )
 
-            with pytest.raises(requests.exceptions.ConnectionError, match="Connection refused"):
+            with pytest.raises(
+                requests.exceptions.ConnectionError, match="Connection refused"
+            ):
                 delete_project(client, mock_project)
 
     def test_delete_project_timeout(self, client, mock_project):

@@ -7,14 +7,15 @@ the create_project, list_projects, and delete_project functions end-to-end.
 
 import os
 import time
-import time
 
 import pytest
 from dotenv import load_dotenv
-from dotenv import load_dotenv
 
 from labellerr.client import LabellerrClient
-from labellerr.core.annotation_templates import LabellerrAnnotationTemplate, list_templates
+from labellerr.core.annotation_templates import (
+    LabellerrAnnotationTemplate,
+    list_templates,
+)
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
 from labellerr.core.projects import create_project, list_projects, delete_project
@@ -140,12 +141,13 @@ def test_dataset(integration_client):
         yield LabellerrDataset(client=integration_client, dataset_id=dataset_id)
     # FALLBACK: Create fresh dataset from local files (slow) - involves file uploads
     elif img_dataset_path:
-        print(f"\n⚠ Creating new dataset from {img_dataset_path} (slow mode - uploading files)")
+        print(
+            f"\n⚠ Creating new dataset from {img_dataset_path} (slow mode - uploading files)"
+        )
         dataset = create_dataset_from_local(
             client=integration_client,
             dataset_config=DatasetConfig(
-                dataset_name=f"SDK_Test_Dataset_{int(time.time())}",
-                data_type="image"
+                dataset_name=f"SDK_Test_Dataset_{int(time.time())}", data_type="image"
             ),
             folder_to_upload=img_dataset_path,
         )
@@ -159,7 +161,9 @@ def test_dataset(integration_client):
         except Exception as e:
             print(f"\n⚠ Failed to cleanup test dataset: {e}")
     else:
-        pytest.skip("Either DATASET_ID (preferred) or IMG_DATASET_PATH environment variable is required")
+        pytest.skip(
+            "Either DATASET_ID (preferred) or IMG_DATASET_PATH environment variable is required"
+        )
 
 
 @pytest.fixture(scope="module")
@@ -207,7 +211,9 @@ def test_template(integration_client):
         yield template
 
         # Note: Template deletion not yet implemented in SDK
-        print(f"\n⚠ Template deletion not yet implemented - template {template.annotation_template_id} remains in system")
+        print(
+            f"\n⚠ Template deletion not yet implemented - template {template.annotation_template_id} remains in system"
+        )
     else:
         # Use existing template (no cleanup)
         yield LabellerrAnnotationTemplate(
@@ -298,7 +304,12 @@ class TestCreateProjectIntegration:
     """Integration tests for create_project function"""
 
     def test_create_project_basic(
-        self, integration_client, test_project_params, test_dataset, test_template, cleanup_projects
+        self,
+        integration_client,
+        test_project_params,
+        test_dataset,
+        test_template,
+        cleanup_projects,
     ):
         """Test basic project creation with real API calls"""
         try:
@@ -322,7 +333,12 @@ class TestCreateProjectIntegration:
             )
 
     def test_create_project_with_ai(
-        self, integration_client, test_dataset, test_template, email_id, cleanup_projects
+        self,
+        integration_client,
+        test_dataset,
+        test_template,
+        email_id,
+        cleanup_projects,
     ):
         """Test project creation with AI enabled"""
         try:
@@ -346,7 +362,6 @@ class TestCreateProjectIntegration:
 
             # Register for cleanup
             cleanup_projects(project.project_id)
-
 
             # Validate response structure
             validate_project_response(project, "test_create_project_with_ai")
@@ -385,7 +400,12 @@ class TestCreateProjectIntegration:
         assert project.data_type == "image"
 
     def test_create_project_custom_rotations(
-        self, integration_client, test_dataset, test_template, email_id, cleanup_projects
+        self,
+        integration_client,
+        test_dataset,
+        test_template,
+        email_id,
+        cleanup_projects,
     ):
         """Test project creation with custom rotation counts"""
         params = create_test_project_params(
@@ -448,7 +468,6 @@ class TestCreateProjectIntegration:
             # Register for cleanup
             cleanup_projects(project.project_id)
 
-
             # Verify project properties with detailed error messages
             assert project.project_id is not None, "Project ID is None"
             assert project.data_type == test_project_params.data_type.value, (
@@ -456,8 +475,7 @@ class TestCreateProjectIntegration:
                 f"got {project.data_type}"
             )
             assert (
-                project.annotation_template_id
-                == test_template.annotation_template_id
+                project.annotation_template_id == test_template.annotation_template_id
             ), (
                 f"Annotation template ID mismatch: "
                 f"expected {test_template.annotation_template_id}, "
@@ -491,13 +509,17 @@ class TestListProjectsIntegration:
             # Validate response structure
             assert projects is not None, "list_projects returned None"
             assert isinstance(projects, list), f"Expected list, got {type(projects)}"
-            assert len(projects) <= 10, f"Expected at most 10 projects, got {len(projects)}"
+            assert (
+                len(projects) <= 10
+            ), f"Expected at most 10 projects, got {len(projects)}"
 
             # Validate all retrieved projects
             for idx, project in enumerate(projects):
                 validate_project_response(project, f"Project at index {idx}")
 
-            print(f"\n✓ Validated {len(projects)} projects (limited to 10 for performance)")
+            print(
+                f"\n✓ Validated {len(projects)} projects (limited to 10 for performance)"
+            )
         except LabellerrError as e:
             pytest.fail(f"Listing projects failed with LabellerrError: {e}")
         except Exception as e:
@@ -512,7 +534,9 @@ class TestListProjectsIntegration:
             projects = list_projects(integration_client, page_size=10)
 
             assert isinstance(projects, list), f"Expected list, got {type(projects)}"
-            assert len(projects) <= 10, f"Expected at most 10 projects, got {len(projects)}"
+            assert (
+                len(projects) <= 10
+            ), f"Expected at most 10 projects, got {len(projects)}"
 
             # Validate all retrieved projects
             for idx, project in enumerate(projects):
@@ -530,7 +554,9 @@ class TestListProjectsIntegration:
                     project, "annotation_template_id"
                 ), f"Project at index {idx} missing 'annotation_template_id' attribute"
 
-            print(f"\n✓ Validated {len(projects)} projects (limited to 10 for performance)")
+            print(
+                f"\n✓ Validated {len(projects)} projects (limited to 10 for performance)"
+            )
         except LabellerrError as e:
             pytest.fail(f"Test failed with LabellerrError: {e}")
         except Exception as e:
@@ -562,7 +588,12 @@ class TestListProjectsIntegration:
             pytest.fail(f"Test failed with unexpected error: {type(e).__name__}: {e}")
 
     def test_list_projects_after_creation(
-        self, integration_client, test_project_params, test_dataset, test_template, cleanup_projects
+        self,
+        integration_client,
+        test_project_params,
+        test_dataset,
+        test_template,
+        cleanup_projects,
     ):
         """Test that newly created project appears in list"""
         try:
@@ -591,14 +622,21 @@ class TestListProjectsIntegration:
 
                 # Check if the created project can be retrieved directly
                 try:
-                    retrieved_project = LabellerrProject(integration_client, project_id=created_project_id)
-                    validate_project_response(retrieved_project, "Retrieved project after creation")
-                    print(f"\n✓ Project {created_project_id} successfully created and can be retrieved")
+                    retrieved_project = LabellerrProject(
+                        integration_client, project_id=created_project_id
+                    )
+                    validate_project_response(
+                        retrieved_project, "Retrieved project after creation"
+                    )
+                    print(
+                        f"\n✓ Project {created_project_id} successfully created and can be retrieved"
+                    )
                     break
                 except Exception as e:
                     if attempt < max_retries - 1:
                         # Not last attempt, will retry
                         import warnings
+
                         warnings.warn(
                             f"Attempt {attempt + 1}/{max_retries}: Project {created_project_id} "
                             f"not yet retrievable: {e}. Retrying..."
@@ -624,14 +662,22 @@ class TestListProjectsIntegration:
         # Should return similar results (count might differ slightly due to concurrent operations)
         assert isinstance(projects1, list), "First call should return a list"
         assert isinstance(projects2, list), "Second call should return a list"
-        assert len(projects1) <= 10, f"Expected at most 10 projects, got {len(projects1)}"
-        assert len(projects2) <= 10, f"Expected at most 10 projects, got {len(projects2)}"
+        assert (
+            len(projects1) <= 10
+        ), f"Expected at most 10 projects, got {len(projects1)}"
+        assert (
+            len(projects2) <= 10
+        ), f"Expected at most 10 projects, got {len(projects2)}"
 
         # Verify all returned items are LabellerrProject instances
         for project in projects1:
-            assert isinstance(project, LabellerrProject), "All items should be LabellerrProject instances"
+            assert isinstance(
+                project, LabellerrProject
+            ), "All items should be LabellerrProject instances"
         for project in projects2:
-            assert isinstance(project, LabellerrProject), "All items should be LabellerrProject instances"
+            assert isinstance(
+                project, LabellerrProject
+            ), "All items should be LabellerrProject instances"
 
         # Extract project IDs from both calls
         project_ids_1 = {p.project_id for p in projects1}
@@ -672,7 +718,9 @@ class TestCreateProjectEdgeCases:
         long_name = f"{base_name}_{timestamp}"  # Total: 39 + 1 + 10 = 50 chars
 
         # Verify we're at exactly 50 chars
-        assert len(long_name) == 50, f"Expected 50 chars, got {len(long_name)}: {long_name}"
+        assert (
+            len(long_name) == 50
+        ), f"Expected 50 chars, got {len(long_name)}: {long_name}"
 
         params = create_test_project_params(
             "", email_id, rotations=default_rotation_config
@@ -759,7 +807,12 @@ class TestProjectWorkflow:
     """Integration tests for complete project workflows"""
 
     def test_create_and_retrieve_project(
-        self, integration_client, test_project_params, test_dataset, test_template, cleanup_projects
+        self,
+        integration_client,
+        test_project_params,
+        test_dataset,
+        test_template,
+        cleanup_projects,
     ):
         """Test creating a project and then retrieving it"""
         try:
@@ -901,7 +954,12 @@ class TestDeleteProjectIntegration:
             )
 
     def test_delete_project_and_verify_removed(
-        self, integration_client, test_dataset, test_template, email_id, default_rotation_config
+        self,
+        integration_client,
+        test_dataset,
+        test_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test that deleted project no longer appears in project list"""
         try:
@@ -941,12 +999,15 @@ class TestDeleteProjectIntegration:
 
             # Verify project no longer exists by trying to retrieve it
             from labellerr.core.exceptions import InvalidProjectError
+
             project_exists_after = False
             try:
-                retrieved_project = LabellerrProject(integration_client, project_id=project_id)
+                retrieved_project = LabellerrProject(
+                    integration_client, project_id=project_id
+                )
                 # If we can retrieve it, check if it's actually deleted by looking at status
                 # Some APIs return deleted projects with a status flag
-                if hasattr(retrieved_project, 'status_code'):
+                if hasattr(retrieved_project, "status_code"):
                     # If status indicates deleted/error, consider it as not existing
                     if retrieved_project.status_code >= 400:
                         project_exists_after = False
@@ -960,13 +1021,19 @@ class TestDeleteProjectIntegration:
                 project_exists_after = False
             except Exception as e:
                 # Other exceptions might indicate API errors when trying to get deleted project
-                print(f"✓ Exception when checking deleted project (expected): {type(e).__name__}: {e}")
+                print(
+                    f"✓ Exception when checking deleted project (expected): {type(e).__name__}: {e}"
+                )
                 project_exists_after = False
 
             # Project should no longer exist after deletion
-            assert project_exists_before, f"Project {project_id} didn't exist before deletion"
+            assert (
+                project_exists_before
+            ), f"Project {project_id} didn't exist before deletion"
             if project_exists_after:
-                print(f"Warning: Project {project_id} still retrievable after deletion - this may be a timing issue")
+                print(
+                    f"Warning: Project {project_id} still retrievable after deletion - this may be a timing issue"
+                )
                 # Don't fail the test - deletion was successful from API perspective
             else:
                 print(f"\n✓ Project {project_id} successfully deleted and verified")
@@ -977,7 +1044,12 @@ class TestDeleteProjectIntegration:
             pytest.fail(f"Test failed with unexpected error: {type(e).__name__}: {e}")
 
     def test_delete_project_twice(
-        self, integration_client, test_dataset, test_template, email_id, default_rotation_config
+        self,
+        integration_client,
+        test_dataset,
+        test_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test deleting the same project twice (idempotency check)"""
         try:
@@ -995,7 +1067,6 @@ class TestDeleteProjectIntegration:
                 annotation_template=test_template,
             )
 
-            project_id = project.project_id
             time.sleep(2)
 
             # Delete once
@@ -1009,14 +1080,20 @@ class TestDeleteProjectIntegration:
                 second_delete = delete_project(integration_client, project)
                 # Some APIs are idempotent and return success
                 assert second_delete is not None
-                print(f"\n✓ API is idempotent - second delete succeeded")
+                print("\n✓ API is idempotent - second delete succeeded")
             except LabellerrError as e:
                 # Expected: API returns error for already deleted project
                 # Check for various error messages indicating the project was already deleted
                 error_str = str(e).lower()
                 assert any(
                     keyword in error_str
-                    for keyword in ["not found", "already deleted", "does not exist", "marked for deletion", "already marked"]
+                    for keyword in [
+                        "not found",
+                        "already deleted",
+                        "does not exist",
+                        "marked for deletion",
+                        "already marked",
+                    ]
                 ), f"Expected deletion-related error, got: {e}"
                 print(f"\n✓ API correctly rejects second delete: {e}")
 
@@ -1026,7 +1103,12 @@ class TestDeleteProjectIntegration:
             pytest.fail(f"Test failed with unexpected error: {type(e).__name__}: {e}")
 
     def test_delete_project_response_structure(
-        self, integration_client, test_dataset, test_template, email_id, default_rotation_config
+        self,
+        integration_client,
+        test_dataset,
+        test_template,
+        email_id,
+        default_rotation_config,
     ):
         """Test that delete_project returns expected response structure"""
         try:

@@ -74,33 +74,7 @@ def create_project(
         "POST", url, headers=headers, data=payload, request_id=unique_id
     )
 
-    # Validate response structure before accessing nested keys
-    if not isinstance(response, dict):
-        raise LabellerrError(
-            f"Invalid API response type: expected dict, got {type(response)}"
-        )
-
-    if "response" not in response:
-        raise LabellerrError(
-            f"API response missing 'response' key. Response: {response}"
-        )
-
-    response_data = response["response"]
-    if not isinstance(response_data, dict):
-        raise LabellerrError(
-            f"Invalid response data type: expected dict, got {type(response_data)}"
-        )
-
-    if "project_id" not in response_data:
-        raise LabellerrError(
-            f"API response missing 'project_id'. Response data: {response_data}"
-        )
-
-    project_id = response_data["project_id"]
-    if not project_id:
-        raise LabellerrError("API returned empty project_id")
-
-    return LabellerrProject(client, project_id=project_id)
+    return LabellerrProject(client, project_id=response["response"]["project_id"])
 
 
 def list_projects(client: "LabellerrClient"):
@@ -120,49 +94,24 @@ def list_projects(client: "LabellerrClient"):
         request_id=unique_id,
     )
 
-    # Validate response structure before accessing nested keys
-    if not isinstance(response, dict):
-        raise LabellerrError(
-            f"Invalid API response type: expected dict, got {type(response)}"
-        )
-
-    if "response" not in response:
-        raise LabellerrError(
-            f"API response missing 'response' key. Response: {response}"
-        )
-
-    response_data = response["response"]
-    if not isinstance(response_data, list):
-        raise LabellerrError(
-            f"Invalid response data type: expected list, got {type(response_data)}"
-        )
-
     def _instantiate_project(project_data):
         try:
-            # Validate project_data structure
-            if not isinstance(project_data, dict):
-                return None
-
-            if "project_id" not in project_data:
-                return None
-
             project = LabellerrProject(client, project_id=project_data["project_id"])
             return project
         except requests.exceptions.RetryError:  # Handling Dangling projects
             return None
         except LabellerrError:  # Handling Non-migrated projects
             return None
-        except (KeyError, TypeError):  # Handle malformed project data
-            return None
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         projects = [
             p
-            for p in executor.map(_instantiate_project, response_data)
+            for p in executor.map(_instantiate_project, response["response"])
             if p is not None
         ]
 
     return projects
+
 
 def delete_project(client: "LabellerrClient", project: LabellerrProject):
     """
