@@ -14,9 +14,12 @@ from pydantic import ValidationError
 from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
-from labellerr.core.projects import create_project, list_projects
+from labellerr.core.projects import create_project, list_projects, delete_project
 from labellerr.core.projects.base import LabellerrProject
 from labellerr.core.schemas import CreateProjectParams, DatasetDataType, RotationConfig
+import requests
+from unittest.mock import MagicMock
+from labellerr import LabellerrClient
 
 
 @pytest.fixture
@@ -43,6 +46,17 @@ def mock_annotation_template():
     template = Mock(spec=LabellerrAnnotationTemplate)
     template.annotation_template_id = "template-789"
     return template
+
+
+@pytest.fixture
+def client():
+    """Create a mock LabellerrClient"""
+    from labellerr import LabellerrClient
+    mock_client = Mock(spec=LabellerrClient)
+    mock_client.client_id = "test-client-id"
+    mock_client.api_key = "test-api-key"
+    mock_client.api_secret = "test-api-secret"
+    return mock_client
 
 
 @pytest.fixture
@@ -200,51 +214,52 @@ class TestCreateProject:
                 payload = json.loads(call_args[1]["data"])
                 assert payload["use_ai"] is True
 
-    def test_create_project_different_data_types(
-        self, client, mock_dataset, mock_annotation_template
-    ):
-        """Test project creation with different data types"""
-        data_types = [
+    @pytest.mark.parametrize(
+        "data_type",
+        [
             DatasetDataType.image,
             DatasetDataType.video,
             DatasetDataType.audio,
             DatasetDataType.document,
             DatasetDataType.text,
-        ]
+        ],
+    )
+    def test_create_project_different_data_types(
+        self, client, mock_dataset, mock_annotation_template, data_type
+    ):
+        """Test project creation with different data types"""
+        params = CreateProjectParams(
+            project_name=f"{data_type.value} Project",
+            data_type=data_type,
+            rotations=RotationConfig(
+                annotation_rotation_count=1,
+                review_rotation_count=1,
+                client_review_rotation_count=1,
+            ),
+            use_ai=False,
+            created_by="test@example.com",
+        )
 
-        for data_type in data_types:
-            params = CreateProjectParams(
-                project_name=f"{data_type.value} Project",
-                data_type=data_type,
-                rotations=RotationConfig(
-                    annotation_rotation_count=1,
-                    review_rotation_count=1,
-                    client_review_rotation_count=1,
-                ),
-                use_ai=False,
-                created_by="test@example.com",
-            )
+        mock_response = {"response": {"project_id": f"{data_type.value}-project"}}
 
-            mock_response = {"response": {"project_id": f"{data_type.value}-project"}}
+        with patch.object(client, "make_request", return_value=mock_response):
+            with patch(
+                "labellerr.core.projects.base.LabellerrProject.get_project",
+                return_value={
+                    "project_id": f"{data_type.value}-project",
+                    "data_type": data_type.value,
+                    "status_code": 200,
+                },
+            ):
+                result = create_project(
+                    client, params, [mock_dataset], mock_annotation_template
+                )
 
-            with patch.object(client, "make_request", return_value=mock_response):
-                with patch(
-                    "labellerr.core.projects.base.LabellerrProject.get_project",
-                    return_value={
-                        "project_id": f"{data_type.value}-project",
-                        "data_type": data_type.value,
-                        "status_code": 200,
-                    },
-                ):
-                    result = create_project(
-                        client, params, [mock_dataset], mock_annotation_template
-                    )
-
-                    assert result is not None
-                    # Verify data_type in payload
-                    call_args = client.make_request.call_args
-                    payload = json.loads(call_args[1]["data"])
-                    assert payload["data_type"] == data_type.value
+                assert result is not None
+                # Verify data_type in payload
+                call_args = client.make_request.call_args
+                payload = json.loads(call_args[1]["data"])
+                assert payload["data_type"] == data_type.value
 
     def test_create_project_custom_rotations(
         self, client, mock_dataset, mock_annotation_template
@@ -405,17 +420,7 @@ class TestListProjects:
 
     def test_list_projects_empty_response(self, client):
         """Test list_projects with empty project list"""
-        mock_response = {"response": {"projects": []}}
-
-        with patch.object(client, "make_request", return_value=mock_response):
-            result = list_projects(client)
-
-            assert result == []
-            assert isinstance(result, list)
-
-    def test_list_projects_empty_response_list_format(self, client):
-        """Test list_projects with empty project list (direct list format)"""
-        mock_response = []
+        mock_response = {"response": []}
 
         with patch.object(client, "make_request", return_value=mock_response):
             result = list_projects(client)
@@ -426,28 +431,8 @@ class TestListProjects:
     def test_list_projects_single_project(self, client):
         """Test list_projects with a single project"""
         mock_response = {
-            "response": {
-                "projects": [{"project_id": "project-1", "data_type": "image"}]
-            }
+            "response": [{"project_id": "project-1", "data_type": "image"}]
         }
-
-        with patch.object(client, "make_request", return_value=mock_response):
-            with patch(
-                "labellerr.core.projects.base.LabellerrProject.get_project",
-                return_value={
-                    "project_id": "project-1",
-                    "data_type": "image",
-                    "status_code": 200,
-                },
-            ):
-                result = list_projects(client)
-
-                assert len(result) == 1
-                assert isinstance(result[0], LabellerrProject)
-
-    def test_list_projects_single_project_list_format(self, client):
-        """Test list_projects with a single project (direct list format)"""
-        mock_response = [{"project_id": "project-1", "data_type": "image"}]
 
         with patch.object(client, "make_request", return_value=mock_response):
             with patch(
@@ -466,13 +451,11 @@ class TestListProjects:
     def test_list_projects_multiple_projects(self, client):
         """Test list_projects with multiple projects"""
         mock_response = {
-            "response": {
-                "projects": [
-                    {"project_id": "project-1", "data_type": "image"},
-                    {"project_id": "project-2", "data_type": "video"},
-                    {"project_id": "project-3", "data_type": "text"},
-                ]
-            }
+            "response": [
+                {"project_id": "project-1", "data_type": "image"},
+                {"project_id": "project-2", "data_type": "video"},
+                {"project_id": "project-3", "data_type": "text"},
+            ]
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
@@ -503,7 +486,7 @@ class TestListProjects:
 
     def test_list_projects_url_construction(self, client):
         """Test that list_projects constructs URL correctly"""
-        mock_response = {"response": {"projects": []}}
+        mock_response = {"response": []}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -519,7 +502,7 @@ class TestListProjects:
 
     def test_list_projects_request_method(self, client):
         """Test that list_projects uses GET method"""
-        mock_response = {"response": {"projects": []}}
+        mock_response = {"response": []}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -533,7 +516,7 @@ class TestListProjects:
 
     def test_list_projects_headers(self, client):
         """Test that list_projects sets correct headers"""
-        mock_response = {"response": {"projects": []}}
+        mock_response = {"response": []}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -548,7 +531,7 @@ class TestListProjects:
 
     def test_list_projects_with_uuid(self, client):
         """Test that list_projects generates and uses UUID"""
-        mock_response = {"response": {"projects": []}}
+        mock_response = {"response": []}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -571,11 +554,9 @@ class TestListProjects:
         """Test that list_projects preserves order of projects"""
         project_ids = ["proj-001", "proj-002", "proj-003", "proj-004"]
         mock_response = {
-            "response": {
-                "projects": [
-                    {"project_id": pid, "data_type": "image"} for pid in project_ids
-                ]
-            }
+            "response": [
+                {"project_id": pid, "data_type": "image"} for pid in project_ids
+            ]
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
@@ -662,6 +643,154 @@ class TestCreateProjectParamsValidation:
                 use_ai=False,
                 created_by="test@example.com",
             )
+
+
+@pytest.mark.unit
+class TestDeleteProjectUnit:
+    """Unit tests for delete_project with mocked API calls"""
+
+    @pytest.fixture
+    def client(self):
+        """Create a mock client for unit testing"""
+        mock_client = MagicMock(spec=LabellerrClient)
+        mock_client.client_id = "test-client-id"
+        mock_client.api_key = "test-api-key"
+        mock_client.api_secret = "test-api-secret"
+        return mock_client
+
+    @pytest.fixture
+    def mock_project(self, client):
+        """Create a mock project for testing"""
+        project = MagicMock(spec=LabellerrProject)
+        project.client = client
+        project.project_id = "test_project_id_123"
+        project.data_type = "image"
+        project.annotation_template_id = "test_template_id"
+        project.created_by = "test@example.com"
+        project.project_name = "Test Project"
+        return project
+
+    def test_delete_project_url_format(self, client, mock_project):
+        """Test that delete_project constructs the correct URL"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.return_value = {"response": {"message": "Deleted"}}
+
+            delete_project(client, mock_project)
+
+            # Verify API call was made
+            mock_request.assert_called_once()
+            call_args = mock_request.call_args
+
+            # Verify HTTP method
+            assert call_args[0][0] == "POST", "Should use POST method"
+
+            # Verify URL structure
+            url = call_args[0][1]
+            assert "/projects/delete/" in url, "URL should contain /projects/delete/"
+            assert mock_project.project_id in url, "URL should contain project_id"
+            assert f"client_id={client.client_id}" in url, "URL should contain client_id"
+            assert "uuid=" in url, "URL should contain uuid parameter"
+
+    def test_delete_project_headers(self, client, mock_project):
+        """Test that delete_project sends correct headers"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.return_value = {"response": {}}
+
+            delete_project(client, mock_project)
+
+            # Verify headers
+            call_kwargs = mock_request.call_args[1]
+            assert "extra_headers" in call_kwargs
+            assert call_kwargs["extra_headers"]["content-type"] == "application/json"
+
+    def test_delete_project_api_error(self, client, mock_project):
+        """Test handling of API errors during deletion"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = LabellerrError("Project not found")
+
+            with pytest.raises(LabellerrError, match="Project not found"):
+                delete_project(client, mock_project)
+
+    def test_delete_project_connection_error(self, client, mock_project):
+        """Test handling of connection errors during deletion"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = requests.exceptions.ConnectionError("Connection refused")
+
+            with pytest.raises(requests.exceptions.ConnectionError, match="Connection refused"):
+                delete_project(client, mock_project)
+
+    def test_delete_project_timeout(self, client, mock_project):
+        """Test handling of timeout errors during deletion"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = requests.exceptions.Timeout("Request timed out")
+
+            with pytest.raises(requests.exceptions.Timeout, match="Request timed out"):
+                delete_project(client, mock_project)
+
+    def test_delete_project_with_none_project(self, client):
+        """Test that deleting None project raises appropriate error"""
+        with pytest.raises(AttributeError):
+            delete_project(client, None)
+
+    def test_delete_project_with_empty_project_id(self, client):
+        """Test handling of project with empty project_id"""
+        mock_proj = MagicMock()
+        mock_proj.project_id = ""
+
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.return_value = {"response": {}}
+
+            # Should still make the API call (API will handle validation)
+            delete_project(client, mock_proj)
+
+            # Verify call was made
+            mock_request.assert_called_once()
+
+    def test_delete_project_malformed_response(self, client, mock_project):
+        """Test handling of malformed API response"""
+        with patch.object(client, "make_request") as mock_request:
+            # Return malformed response (missing expected keys)
+            mock_request.return_value = {}
+
+            # Should not raise an error, but return the response as-is
+            result = delete_project(client, mock_project)
+            assert result == {}
+
+    def test_delete_project_unauthorized(self, client, mock_project):
+        """Test handling of unauthorized deletion attempts"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = LabellerrError("403 Unauthorized")
+
+            with pytest.raises(LabellerrError, match="403 Unauthorized"):
+                delete_project(client, mock_project)
+
+    def test_delete_nonexistent_project(self, client):
+        """Test deleting a project that doesn't exist (moved from integration tests)"""
+        # Create a mock project with non-existent ID
+        nonexistent_project = MagicMock(spec=LabellerrProject)
+        nonexistent_project.project_id = "nonexistent_project_12345"
+
+        # Mock the API to return an error for non-existent project
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = LabellerrError("Project not found")
+
+            # Attempt to delete should raise an error
+            with pytest.raises(LabellerrError) as exc_info:
+                delete_project(client, nonexistent_project)
+
+            # Verify the error message
+            assert any(
+                keyword in str(exc_info.value).lower()
+                for keyword in ["not found", "does not exist"]
+            ), f"Expected 'not found' error, got: {exc_info.value}"
+
+    def test_delete_project_server_error(self, client, mock_project):
+        """Test handling of server errors (500) during deletion"""
+        with patch.object(client, "make_request") as mock_request:
+            mock_request.side_effect = LabellerrError("500 Internal Server Error")
+
+            with pytest.raises(LabellerrError, match="500 Internal Server Error"):
+                delete_project(client, mock_project)
 
 
 if __name__ == "__main__":
