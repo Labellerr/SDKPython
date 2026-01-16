@@ -112,6 +112,7 @@ def list_projects(client: "LabellerrClient"):
 
     return projects
 
+
 def delete_project(client: "LabellerrClient", project: LabellerrProject):
     """
     Deletes a project from the Labellerr API.
