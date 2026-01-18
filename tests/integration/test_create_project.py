@@ -135,12 +135,22 @@ def test_dataset(integration_client):
     dataset_id = os.getenv("DATASET_ID")
     img_dataset_path = os.getenv("IMG_DATASET_PATH")
 
-    # PREFER existing dataset (fast) - no file uploads needed
+    created_new_dataset = False
+
+    # TRY existing dataset first (fast) - no file uploads needed
     if dataset_id:
-        print(f"\n✓ Using existing dataset: {dataset_id} (fast mode)")
-        yield LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+        try:
+            print(f"\n⚠ Trying to use existing dataset: {dataset_id} (fast mode)")
+            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            print(f"✓ Using existing dataset: {dataset_id}")
+            yield dataset
+            return  # Success - no cleanup needed
+        except Exception as e:
+            print(f"✗ Existing dataset {dataset_id} not accessible: {e}")
+            print(f"⚠ Will create new dataset instead...")
+
     # FALLBACK: Create fresh dataset from local files (slow) - involves file uploads
-    elif img_dataset_path:
+    if img_dataset_path:
         print(
             f"\n⚠ Creating new dataset from {img_dataset_path} (slow mode - uploading files)"
         )
@@ -151,15 +161,18 @@ def test_dataset(integration_client):
             ),
             folder_to_upload=img_dataset_path,
         )
+        created_new_dataset = True
+        print(f"✓ Created new dataset: {dataset.dataset_id}")
 
         yield dataset
 
-        # Cleanup: delete the dataset after all tests
-        try:
-            delete_dataset(integration_client, dataset.dataset_id)
-            print(f"\n✓ Cleaned up test dataset: {dataset.dataset_id}")
-        except Exception as e:
-            print(f"\n⚠ Failed to cleanup test dataset: {e}")
+        # Cleanup: delete the dataset after all tests (only if we created it)
+        if created_new_dataset:
+            try:
+                delete_dataset(integration_client, dataset.dataset_id)
+                print(f"\n✓ Cleaned up test dataset: {dataset.dataset_id}")
+            except Exception as e:
+                print(f"\n⚠ Failed to cleanup test dataset: {e}")
     else:
         pytest.skip(
             "Either DATASET_ID (preferred) or IMG_DATASET_PATH environment variable is required"
@@ -183,42 +196,52 @@ def test_template(integration_client):
 
     template_id = os.getenv("TEMPLATE_ID")
 
-    # If no template ID, create a fresh one
-    if not template_id:
-        params = CreateTemplateParams(
-            template_name=f"SDK_Test_Project_Template_{uuid.uuid4().hex[:8]}",
-            data_type=DatasetDataType.image,
-            questions=[
-                AnnotationQuestion(
-                    question_number=1,
-                    question="Draw bounding box around objects",
-                    question_type=QuestionType.bounding_box,
-                    required=True,
-                    color="#FF0000",
-                ),
-                AnnotationQuestion(
-                    question_number=2,
-                    question="Is object visible?",
-                    question_type=QuestionType.boolean,
-                    required=False,
-                    options=[Option(option_name="Yes"), Option(option_name="No")],
-                ),
-            ],
-        )
+    # TRY existing template first (fast)
+    if template_id:
+        try:
+            print(f"\n⚠ Trying to use existing template: {template_id}")
+            template = LabellerrAnnotationTemplate(
+                client=integration_client, annotation_template_id=template_id
+            )
+            print(f"✓ Using existing template: {template_id}")
+            yield template
+            return  # Success - no cleanup needed
+        except Exception as e:
+            print(f"✗ Existing template {template_id} not accessible: {e}")
+            print(f"⚠ Will create new template instead...")
 
-        template = create_template(integration_client, params)
+    # FALLBACK: Create a fresh template
+    print("\n⚠ Creating new annotation template")
+    params = CreateTemplateParams(
+        template_name=f"SDK_Test_Project_Template_{uuid.uuid4().hex[:8]}",
+        data_type=DatasetDataType.image,
+        questions=[
+            AnnotationQuestion(
+                question_number=1,
+                question="Draw bounding box around objects",
+                question_type=QuestionType.bounding_box,
+                required=True,
+                color="#FF0000",
+            ),
+            AnnotationQuestion(
+                question_number=2,
+                question="Is object visible?",
+                question_type=QuestionType.boolean,
+                required=False,
+                options=[Option(option_name="Yes"), Option(option_name="No")],
+            ),
+        ],
+    )
 
-        yield template
+    template = create_template(integration_client, params)
+    print(f"✓ Created new template: {template.annotation_template_id}")
 
-        # Note: Template deletion not yet implemented in SDK
-        print(
-            f"\n⚠ Template deletion not yet implemented - template {template.annotation_template_id} remains in system"
-        )
-    else:
-        # Use existing template (no cleanup)
-        yield LabellerrAnnotationTemplate(
-            client=integration_client, annotation_template_id=template_id
-        )
+    yield template
+
+    # Note: Template deletion not yet implemented in SDK
+    print(
+        f"\n⚠ Template deletion not yet implemented - template {template.annotation_template_id} remains in system"
+    )
 
 
 @pytest.fixture
@@ -255,15 +278,56 @@ def cleanup_projects(integration_client):
 
     yield _register
 
-    # Cleanup: delete all registered projects
+    # Cleanup: delete all registered projects with retry logic
+    failed_cleanups = []
     for project_id in projects_to_cleanup:
-        try:
-            # Create a simple project object with just the ID for deletion
-            project = LabellerrProject(integration_client, project_id=project_id)
-            delete_project(integration_client, project)
-            print(f"\n✓ Cleaned up project: {project_id}")
-        except Exception as e:
-            print(f"\n⚠ Failed to cleanup project {project_id}: {e}")
+        max_retries = 5  # Increased from 3 to 5 for better cleanup success rate
+        retry_delay = 3  # Increased from 2 to 3 seconds to give backend more time
+
+        for attempt in range(max_retries):
+            try:
+                # Create a simple project object with just the ID for deletion
+                project = LabellerrProject(integration_client, project_id=project_id)
+
+                # Wait for project to finish processing before deletion
+                # Projects cannot be deleted while status is "In Progress"
+                try:
+                    status_data = project.status()
+                    status_code = status_data.get("status_code", 500)
+                    if status_code != 300:
+                        print(f"\n⚠ Project {project_id} completed with status code {status_code}, attempting cleanup anyway...")
+                except Exception as status_error:
+                    print(f"\n⚠ Could not check project status: {status_error}, attempting cleanup anyway...")
+
+                delete_project(integration_client, project)
+                print(f"\n✓ Cleaned up project: {project_id}")
+                break  # Success - exit retry loop
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Not the last attempt, wait and retry
+                    print(f"\n⚠ Cleanup attempt {attempt + 1}/{max_retries} failed for {project_id}: {e}. Retrying...")
+                    time.sleep(retry_delay)
+                else:
+                    # Last attempt failed
+                    print(f"\n✗ Failed to cleanup project {project_id} after {max_retries} attempts: {e}")
+                    failed_cleanups.append(project_id)
+
+    # Report detailed cleanup summary
+    print("\n" + "=" * 80)
+    print("CLEANUP SUMMARY")
+    print("=" * 80)
+    print(f"  Total projects to cleanup:    {len(projects_to_cleanup)}")
+    print(f"  Successfully deleted:         {len(projects_to_cleanup) - len(failed_cleanups)}")
+    print(f"  Failed to delete:             {len(failed_cleanups)}")
+    print("=" * 80)
+
+    if failed_cleanups:
+        print(f"\n⚠ WARNING: {len(failed_cleanups)} project(s) failed to cleanup:")
+        for project_id in failed_cleanups:
+            print(f"   - {project_id}")
+        print("\n💡 These projects may need manual deletion.")
+        print("   Run: python tests/integration/cleanup_test_projects.py")
+        print("=" * 80)
 
 
 def create_test_project_params(
@@ -412,8 +476,6 @@ class TestCreateProjectIntegration:
             "CustomRotation",
             email_id,
             rotations=RotationConfig(
-                annotation_rotation_count=3,
-                review_rotation_count=2,
                 annotation_rotation_count=3,
                 review_rotation_count=2,
                 client_review_rotation_count=1,
