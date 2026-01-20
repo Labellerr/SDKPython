@@ -260,10 +260,10 @@ def default_rotation_config():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cleanup_projects(integration_client):
     """
-    Fixture for automatic project cleanup after each test.
+    Fixture for automatic project cleanup after all tests in the class.
 
     Usage in tests:
         project = create_project(...)
@@ -279,6 +279,9 @@ def cleanup_projects(integration_client):
     yield _register
 
     # Cleanup: delete all registered projects with retry logic
+    if not projects_to_cleanup:
+        return  # No projects to cleanup
+
     failed_cleanups = []
     for project_id in projects_to_cleanup:
         max_retries = 5  # Increased from 3 to 5 for better cleanup success rate
@@ -300,23 +303,20 @@ def cleanup_projects(integration_client):
                     print(f"\n⚠ Could not check project status: {status_error}, attempting cleanup anyway...")
 
                 delete_project(integration_client, project)
-                print(f"\n✓ Cleaned up project: {project_id}")
                 break  # Success - exit retry loop
             except Exception as e:
                 if attempt < max_retries - 1:
                     # Not the last attempt, wait and retry
-                    print(f"\n⚠ Cleanup attempt {attempt + 1}/{max_retries} failed for {project_id}: {e}. Retrying...")
                     time.sleep(retry_delay)
                 else:
                     # Last attempt failed
-                    print(f"\n✗ Failed to cleanup project {project_id} after {max_retries} attempts: {e}")
                     failed_cleanups.append(project_id)
 
     # Report detailed cleanup summary
     print("\n" + "=" * 80)
     print("CLEANUP SUMMARY")
     print("=" * 80)
-    print(f"  Total projects to cleanup:    {len(projects_to_cleanup)}")
+    print(f"  Total projects created:       {len(projects_to_cleanup)}")
     print(f"  Successfully deleted:         {len(projects_to_cleanup) - len(failed_cleanups)}")
     print(f"  Failed to delete:             {len(failed_cleanups)}")
     print("=" * 80)
@@ -328,6 +328,30 @@ def cleanup_projects(integration_client):
         print("\n💡 These projects may need manual deletion.")
         print("   Run: python tests/integration/cleanup_test_projects.py")
         print("=" * 80)
+
+
+def wait_for_project_ready(project: LabellerrProject, max_wait_seconds: int = 30) -> bool:
+    """
+    Wait for project to finish processing before operations like deletion.
+
+    Args:
+        project: The project to wait for
+        max_wait_seconds: Maximum time to wait in seconds (default: 30)
+
+    Returns:
+        True if project is ready, False if timed out
+    """
+    for _ in range(max_wait_seconds):
+        try:
+            status_data = project.status()
+            status_code = status_data.get("status_code", 500)
+            if status_code != 100:  # Not "In Progress"
+                return True
+        except Exception:
+            # If status check fails, consider it ready to proceed
+            return True
+        time.sleep(1)
+    return False  # Timed out
 
 
 def create_test_project_params(
@@ -980,7 +1004,7 @@ class TestDeleteProjectIntegration:
     """Integration tests for delete_project function"""
 
     def test_delete_project_basic(
-        self, integration_client, test_project_params, test_dataset, test_template
+        self, integration_client, test_project_params, test_dataset, test_template, cleanup_projects
     ):
         """Test basic project deletion with real API calls"""
         try:
@@ -996,8 +1020,11 @@ class TestDeleteProjectIntegration:
             project_id = project.project_id
             assert project_id is not None, "Project ID is None"
 
-            # Wait for project to be fully created
-            time.sleep(2)
+            # Register for safety cleanup in case deletion fails
+            cleanup_projects(project_id)
+
+            # Wait for project to finish processing before deletion
+            wait_for_project_ready(project)
 
             # Delete the project
             result = delete_project(integration_client, project)
@@ -1006,7 +1033,7 @@ class TestDeleteProjectIntegration:
             assert result is not None, "delete_project returned None"
             assert isinstance(result, dict), f"Expected dict, got {type(result)}"
 
-            print(f"\n✓ Successfully deleted project: {project_id}")
+            print(f"✓ Successfully deleted project: {project_id}")
 
         except LabellerrError as e:
             pytest.fail(f"Project deletion failed with LabellerrError: {e}")
@@ -1022,6 +1049,7 @@ class TestDeleteProjectIntegration:
         test_template,
         email_id,
         default_rotation_config,
+        cleanup_projects,
     ):
         """Test that deleted project no longer appears in project list"""
         try:
@@ -1042,8 +1070,11 @@ class TestDeleteProjectIntegration:
             project_id = created_project.project_id
             assert project_id is not None
 
-            # Wait for project to be indexed
-            time.sleep(2)
+            # Register for safety cleanup in case deletion fails
+            cleanup_projects(project_id)
+
+            # Wait for project to finish processing
+            wait_for_project_ready(created_project)
 
             # Verify project exists by checking it can be retrieved directly
             try:
