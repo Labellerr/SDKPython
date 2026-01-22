@@ -54,7 +54,44 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: make test-unit
+        run: |
+          mkdir -p reports
+          make test-unit
+        continue-on-error: false
 
       - name: Run integration tests
-        run: make test-integration
+        run: |
+          mkdir -p reports
+          make test-integration
+        continue-on-error: false
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            tests/integration/test_reports/
+            htmlcov/
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: tests/integration/test_reports/junit.xml
+          check_name: Test Results
+          comment_title: Test Results
+
+      - name: Test Report Summary
+        if: always()
+        run: |
+          echo "## 📊 Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f tests/integration/test_reports/junit.xml ]; then
+            echo "✅ Test reports generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📄 Reports available in artifacts" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test reports found" >> $GITHUB_STEP_SUMMARY
+          fi

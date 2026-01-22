@@ -31,3 +31,12 @@ labellerr/__pycache__/
 env.*
 claude.md
 .history/
+
+# Test reports
+tests/integration/test_reports/
+reports/
+htmlcov/
+.coverage
+.pytest_cache/
+*.xml
+*.html

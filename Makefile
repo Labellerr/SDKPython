@@ -20,25 +20,57 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
-	rm -rf build/ dist/ .coverage .pytest_cache/ .mypy_cache/
+	rm -rf build/ dist/ .coverage .pytest_cache/ .mypy_cache/ tests/integration/test_reports/ htmlcov/
 
-test: ## Run all tests
+test: ## Run all tests with HTML report
+	@mkdir -p tests/integration/test_reports
 	$(PYTHON) -m pytest tests/ -v
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 test-unit: ## Run only unit tests
+	@mkdir -p tests/integration/test_reports
 	$(PYTHON) -m pytest tests/unit/ -v -m "unit"
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 test-integration: ## Run only integration tests (requires credentials)
-	$(PYTHON) -m pytest tests/integration/ -v -m "integration"
+	@mkdir -p tests/integration/test_reports
+	$(PYTHON) -m pytest tests/integration/ -v -m "integration and not deprecated"
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 test-fast: ## Run fast tests only (exclude slow tests)
-	$(PYTHON) -m pytest tests/ -v -m "not slow"
+	@mkdir -p tests/integration/test_reports
+	$(PYTHON) -m pytest tests/ -v -m "not slow" --html=dummy --junit-xml=dummy
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 test-aws: ## Run AWS-specific tests
-	$(PYTHON) -m pytest tests/ -v -m "aws"
+	@mkdir -p tests/integration/test_reports
+	$(PYTHON) -m pytest tests/ -v -m "aws" --html=dummy --junit-xml=dummy
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 test-gcs: ## Run GCS-specific tests
-	$(PYTHON) -m pytest tests/ -v -m "gcs"
+	@mkdir -p tests/integration/test_reports
+	$(PYTHON) -m pytest tests/ -v -m "gcs" --html=dummy --junit-xml=dummy
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
+
+test-with-coverage: ## Run tests with coverage report
+	@mkdir -p tests/integration/test_reports htmlcov
+	$(PYTHON) -m pytest tests/ -v --html=dummy --junit-xml=dummy --cov=labellerr --cov-report=html --cov-report=term --cov-report=xml:tests/integration/test_reports/coverage.xml
+	@echo ""
+	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
+	@echo "📈 Coverage report: htmlcov/index.html"
+	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
 
 lint:
 	flake8 .

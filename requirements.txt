@@ -2,6 +2,8 @@ urllib3
 python-dotenv
 requests
 pytest
+pytest-html
+pytest-timeout
 pydantic>=2.0.0
 aiofiles
 aiohttp

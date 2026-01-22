@@ -80,12 +80,12 @@ def verify_api_credentials_before_tests():
         )
 
     # Check if we have either existing resources OR can create new ones
-    dataset_id = os.getenv("DATASET_ID")
-    img_dataset_path = os.getenv("IMG_DATASET_PATH")
+    dataset_id = os.getenv("DATASET_ID") or os.getenv("IMAGE_DATASET_ID")
+    image_dataset_path = os.getenv("IMAGE_DATASET_PATH")
 
-    if not dataset_id and not img_dataset_path:
+    if not dataset_id and not image_dataset_path:
         pytest.skip(
-            "Either DATASET_ID (existing dataset) or IMG_DATASET_PATH (to create new dataset) "
+            "Either DATASET_ID/IMAGE_DATASET_ID (existing dataset) or IMAGE_DATASET_PATH (to create new dataset) "
             "environment variable is required for project tests."
         )
 
@@ -127,13 +127,13 @@ def integration_client():
 def test_dataset(integration_client):
     """
     Create or reuse a test dataset for integration tests.
-    Prioritizes existing DATASET_ID (fast) over creating from IMG_DATASET_PATH (slow).
+    Prioritizes existing IMAGE_DATASET_ID (fast) over creating from IMAGE_DATASET_PATH (slow).
     """
     from labellerr.core.datasets import create_dataset_from_local, delete_dataset
     from labellerr.core.schemas import DatasetConfig
 
-    dataset_id = os.getenv("DATASET_ID")
-    img_dataset_path = os.getenv("IMG_DATASET_PATH")
+    dataset_id = os.getenv("DATASET_ID") or os.getenv("IMAGE_DATASET_ID")
+    image_dataset_path = os.getenv("IMAGE_DATASET_PATH")
 
     created_new_dataset = False
 
@@ -150,16 +150,16 @@ def test_dataset(integration_client):
             print(f"⚠ Will create new dataset instead...")
 
     # FALLBACK: Create fresh dataset from local files (slow) - involves file uploads
-    if img_dataset_path:
+    if image_dataset_path:
         print(
-            f"\n⚠ Creating new dataset from {img_dataset_path} (slow mode - uploading files)"
+            f"\n⚠ Creating new dataset from {image_dataset_path} (slow mode - uploading files)"
         )
         dataset = create_dataset_from_local(
             client=integration_client,
             dataset_config=DatasetConfig(
                 dataset_name=f"SDK_Test_Dataset_{int(time.time())}", data_type="image"
             ),
-            folder_to_upload=img_dataset_path,
+            folder_to_upload=image_dataset_path,
         )
         created_new_dataset = True
         print(f"✓ Created new dataset: {dataset.dataset_id}")
@@ -175,8 +175,156 @@ def test_dataset(integration_client):
                 print(f"\n⚠ Failed to cleanup test dataset: {e}")
     else:
         pytest.skip(
-            "Either DATASET_ID (preferred) or IMG_DATASET_PATH environment variable is required"
+            "Either DATASET_ID/IMAGE_DATASET_ID (preferred) or IMAGE_DATASET_PATH environment variable is required"
         )
+
+
+@pytest.fixture(scope="module")
+def test_video_dataset(integration_client):
+    """Create or reuse a test video dataset for integration tests."""
+    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+    from labellerr.core.schemas import DatasetConfig
+
+    dataset_id = os.getenv("VIDEO_DATASET_ID")
+    video_dataset_path = os.getenv("VIDEO_DATASET_PATH")
+    created_new_dataset = False
+
+    if dataset_id:
+        try:
+            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            yield dataset
+            return
+        except Exception:
+            pass
+
+    if video_dataset_path:
+        dataset = create_dataset_from_local(
+            client=integration_client,
+            dataset_config=DatasetConfig(
+                dataset_name=f"SDK_Test_Video_Dataset_{int(time.time())}", data_type="video"
+            ),
+            folder_to_upload=video_dataset_path,
+        )
+        created_new_dataset = True
+        yield dataset
+        if created_new_dataset:
+            try:
+                delete_dataset(integration_client, dataset.dataset_id)
+            except Exception:
+                pass
+    else:
+        pytest.skip("VIDEO_DATASET_ID or VIDEO_DATASET_PATH required for video tests")
+
+
+@pytest.fixture(scope="module")
+def test_audio_dataset(integration_client):
+    """Create or reuse a test audio dataset for integration tests."""
+    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+    from labellerr.core.schemas import DatasetConfig
+
+    dataset_id = os.getenv("AUDIO_DATASET_ID")
+    audio_dataset_path = os.getenv("AUDIO_DATASET_PATH")
+    created_new_dataset = False
+
+    if dataset_id:
+        try:
+            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            yield dataset
+            return
+        except Exception:
+            pass
+
+    if audio_dataset_path:
+        dataset = create_dataset_from_local(
+            client=integration_client,
+            dataset_config=DatasetConfig(
+                dataset_name=f"SDK_Test_Audio_Dataset_{int(time.time())}", data_type="audio"
+            ),
+            folder_to_upload=audio_dataset_path,
+        )
+        created_new_dataset = True
+        yield dataset
+        if created_new_dataset:
+            try:
+                delete_dataset(integration_client, dataset.dataset_id)
+            except Exception:
+                pass
+    else:
+        pytest.skip("AUDIO_DATASET_ID or AUDIO_DATASET_PATH required for audio tests")
+
+
+@pytest.fixture(scope="module")
+def test_document_dataset(integration_client):
+    """Create or reuse a test document (PDF) dataset for integration tests."""
+    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+    from labellerr.core.schemas import DatasetConfig
+
+    dataset_id = os.getenv("DOCUMENT_DATASET_ID")
+    document_dataset_path = os.getenv("DOCUMENT_DATASET_PATH")
+    created_new_dataset = False
+
+    if dataset_id:
+        try:
+            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            yield dataset
+            return
+        except Exception:
+            pass
+
+    if document_dataset_path:
+        dataset = create_dataset_from_local(
+            client=integration_client,
+            dataset_config=DatasetConfig(
+                dataset_name=f"SDK_Test_Document_Dataset_{int(time.time())}", data_type="document"
+            ),
+            folder_to_upload=document_dataset_path,
+        )
+        created_new_dataset = True
+        yield dataset
+        if created_new_dataset:
+            try:
+                delete_dataset(integration_client, dataset.dataset_id)
+            except Exception:
+                pass
+    else:
+        pytest.skip("DOCUMENT_DATASET_ID or DOCUMENT_DATASET_PATH required for document tests")
+
+
+@pytest.fixture(scope="module")
+def test_text_dataset(integration_client):
+    """Create or reuse a test text dataset for integration tests."""
+    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+    from labellerr.core.schemas import DatasetConfig
+
+    dataset_id = os.getenv("TEXT_DATASET_ID")
+    text_dataset_path = os.getenv("TEXT_DATASET_PATH")
+    created_new_dataset = False
+
+    if dataset_id:
+        try:
+            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            yield dataset
+            return
+        except Exception:
+            pass
+
+    if text_dataset_path:
+        dataset = create_dataset_from_local(
+            client=integration_client,
+            dataset_config=DatasetConfig(
+                dataset_name=f"SDK_Test_Text_Dataset_{int(time.time())}", data_type="text"
+            ),
+            folder_to_upload=text_dataset_path,
+        )
+        created_new_dataset = True
+        yield dataset
+        if created_new_dataset:
+            try:
+                delete_dataset(integration_client, dataset.dataset_id)
+            except Exception:
+                pass
+    else:
+        pytest.skip("TEXT_DATASET_ID or TEXT_DATASET_PATH required for text tests")
 
 
 @pytest.fixture(scope="module")
@@ -486,6 +634,231 @@ class TestCreateProjectIntegration:
 
         assert project is not None
         assert project.data_type == "image"
+
+    def test_create_project_video_type(
+        self,
+        integration_client,
+        test_video_dataset,
+        email_id,
+        default_rotation_config,
+        cleanup_projects,
+    ):
+        """Test creating a video project"""
+        from labellerr.core.annotation_templates import create_template
+        from labellerr.core.schemas.annotation_templates import (
+            AnnotationQuestion,
+            CreateTemplateParams,
+            QuestionType,
+        )
+        import uuid
+
+        # Create video-specific template
+        template = create_template(
+            client=integration_client,
+            params=CreateTemplateParams(
+                template_name=f"SDK_Test_Video_Template_{uuid.uuid4().hex[:8]}",
+                data_type=DatasetDataType.video,
+                questions=[
+                    AnnotationQuestion(
+                        question_number=1,
+                        question="Mark objects in video",
+                        question_type=QuestionType.bounding_box,
+                        required=True,
+                        color="#0000FF",
+                    ),
+                ],
+            ),
+        )
+
+        params = create_test_project_params(
+            "Video", email_id, rotations=default_rotation_config, data_type=DatasetDataType.video
+        )
+
+        project = create_project(
+            client=integration_client,
+            params=params,
+            datasets=[test_video_dataset],
+            annotation_template=template,
+        )
+
+        # Register for cleanup
+        cleanup_projects(project.project_id)
+
+        assert project is not None
+        assert project.data_type == "video"
+
+    def test_create_project_audio_type(
+        self,
+        integration_client,
+        test_audio_dataset,
+        email_id,
+        default_rotation_config,
+        cleanup_projects,
+    ):
+        """Test creating an audio project"""
+        from labellerr.core.annotation_templates import create_template
+        from labellerr.core.schemas.annotation_templates import (
+            AnnotationQuestion,
+            CreateTemplateParams,
+            Option,
+            QuestionType,
+        )
+        import uuid
+
+        # Create audio-specific template
+        template = create_template(
+            client=integration_client,
+            params=CreateTemplateParams(
+                template_name=f"SDK_Test_Audio_Template_{uuid.uuid4().hex[:8]}",
+                data_type=DatasetDataType.audio,
+                questions=[
+                    AnnotationQuestion(
+                        question_number=1,
+                        question="Classify audio content",
+                        question_type=QuestionType.radio,
+                        required=True,
+                        options=[
+                            Option(option_name="Speech"),
+                            Option(option_name="Music"),
+                            Option(option_name="Noise"),
+                            Option(option_name="Silence"),
+                        ],
+                    ),
+                ],
+            ),
+        )
+
+        params = create_test_project_params(
+            "Audio", email_id, rotations=default_rotation_config, data_type=DatasetDataType.audio
+        )
+
+        project = create_project(
+            client=integration_client,
+            params=params,
+            datasets=[test_audio_dataset],
+            annotation_template=template,
+        )
+
+        # Register for cleanup
+        cleanup_projects(project.project_id)
+
+        assert project is not None
+        assert project.data_type == "audio"
+
+    def test_create_project_document_type(
+        self,
+        integration_client,
+        test_document_dataset,
+        email_id,
+        default_rotation_config,
+        cleanup_projects,
+    ):
+        """Test creating a document (PDF) project"""
+        from labellerr.core.annotation_templates import create_template
+        from labellerr.core.schemas.annotation_templates import (
+            AnnotationQuestion,
+            CreateTemplateParams,
+            Option,
+            QuestionType,
+        )
+        import uuid
+
+        # Create document-specific template
+        template = create_template(
+            client=integration_client,
+            params=CreateTemplateParams(
+                template_name=f"SDK_Test_Document_Template_{uuid.uuid4().hex[:8]}",
+                data_type=DatasetDataType.document,
+                questions=[
+                    AnnotationQuestion(
+                        question_number=1,
+                        question="Document classification",
+                        question_type=QuestionType.select,
+                        required=True,
+                        options=[
+                            Option(option_name="Invoice"),
+                            Option(option_name="Receipt"),
+                            Option(option_name="Contract"),
+                            Option(option_name="Other"),
+                        ],
+                    ),
+                ],
+            ),
+        )
+
+        params = create_test_project_params(
+            "Document", email_id, rotations=default_rotation_config, data_type=DatasetDataType.document
+        )
+
+        project = create_project(
+            client=integration_client,
+            params=params,
+            datasets=[test_document_dataset],
+            annotation_template=template,
+        )
+
+        # Register for cleanup
+        cleanup_projects(project.project_id)
+
+        assert project is not None
+        assert project.data_type == "document"
+
+    def test_create_project_text_type(
+        self,
+        integration_client,
+        test_text_dataset,
+        email_id,
+        default_rotation_config,
+        cleanup_projects,
+    ):
+        """Test creating a text project"""
+        from labellerr.core.annotation_templates import create_template
+        from labellerr.core.schemas.annotation_templates import (
+            AnnotationQuestion,
+            CreateTemplateParams,
+            Option,
+            QuestionType,
+        )
+        import uuid
+
+        # Create text-specific template
+        template = create_template(
+            client=integration_client,
+            params=CreateTemplateParams(
+                template_name=f"SDK_Test_Text_Template_{uuid.uuid4().hex[:8]}",
+                data_type=DatasetDataType.text,
+                questions=[
+                    AnnotationQuestion(
+                        question_number=1,
+                        question="Text sentiment analysis",
+                        question_type=QuestionType.radio,
+                        required=True,
+                        options=[
+                            Option(option_name="Positive"),
+                            Option(option_name="Negative"),
+                            Option(option_name="Neutral"),
+                        ],
+                    ),
+                ],
+            ),
+        )
+
+        params = create_test_project_params(
+            "Text", email_id, rotations=default_rotation_config, data_type=DatasetDataType.text
+        )
+
+        project = create_project(
+            client=integration_client,
+            params=params,
+            datasets=[test_text_dataset],
+            annotation_template=template,
+        )
+
+        # Register for cleanup
+        cleanup_projects(project.project_id)
+
+        assert project is not None
+        assert project.data_type == "text"
 
     def test_create_project_custom_rotations(
         self,
@@ -1000,8 +1373,13 @@ class TestProjectWorkflow:
 
 @pytest.mark.integration
 @pytest.mark.slow
-class TestDeleteProjectIntegration:
-    """Integration tests for delete_project function"""
+class ZZTestDeleteProjectIntegration:
+    """
+    Integration tests for delete_project function.
+
+    NOTE: This class is prefixed with 'ZZ' to ensure it runs LAST in alphabetical order.
+    This allows it to clean up all projects created during the test session.
+    """
 
     def test_delete_project_basic(
         self, integration_client, test_project_params, test_dataset, test_template, cleanup_projects

@@ -3,6 +3,9 @@ Comprehensive integration tests for the Labellerr SDK.
 
 This module consolidates all integration tests into a single, well-organized test suite
 that covers the complete functionality of the Labellerr SDK with real API calls.
+
+NOTE: This file uses deprecated API and is excluded from test runs.
+Use test_create_project.py, test_create_dataset.py, and test_create_template.py instead.
 """
 
 import json
@@ -12,6 +15,9 @@ import time
 from typing import Dict, List
 
 import pytest
+
+# Mark entire module as deprecated to exclude from test runs
+pytestmark = pytest.mark.deprecated
 from pydantic import ValidationError
 
 from labellerr.client import LabellerrClient
@@ -137,7 +143,7 @@ class TestPreAnnotationWorkflow:
         annotation_file = temp_json_file(sample_annotation_data["coco_json"])
 
         try:
-            future = project.upload_preannotation(
+            future = project.upload_preannotations(
                 annotation_format="coco_json",
                 annotation_file=annotation_file,
             )
@@ -182,7 +188,7 @@ class TestPreAnnotationWorkflow:
         signal.alarm(60)
 
         try:
-            future = project.upload_preannotation(
+            future = project.upload_preannotations(
                 annotation_format="json",
                 annotation_file=annotation_file,
             )
@@ -228,7 +234,7 @@ class TestPreAnnotationWorkflow:
         project = LabellerrProject(integration_client, test_project_ids["project_id"])
 
         with pytest.raises(LabellerrError) as exc_info:
-            future = project.upload_preannotation(
+            future = project.upload_preannotations(
                 annotation_format=invalid_format,
                 annotation_file="test.json",
             )
