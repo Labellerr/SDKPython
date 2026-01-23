@@ -1,3 +1,18 @@
+"""
+Integration tests for annotation template creation.
+
+This module tests the create_template function for all supported data types:
+- Image (with bounding box and polygon questions)
+- Video (with bounding box questions)
+- Audio (with classification questions)
+- Document (with selection questions)
+- Text (with sentiment questions)
+
+IMPORTANT: Templates cannot be automatically cleaned up as the SDK does not
+provide a delete_template() function. Templates will accumulate with each test run.
+Manual cleanup may be required periodically via the Labellerr UI.
+"""
+
 import os
 import time
 import uuid
@@ -24,7 +39,19 @@ CLIENT_ID = os.getenv("CLIENT_ID")
 
 @pytest.fixture(scope="session")
 def integration_client():
-    """Create a client instance for integration tests."""
+    """
+    Create a client instance for integration tests.
+
+    This is a session-scoped fixture that creates a single client instance
+    shared across all tests in this module to avoid repeated authentication.
+
+    Requires environment variables:
+        - API_KEY: Labellerr API key
+        - API_SECRET: Labellerr API secret
+        - CLIENT_ID: Labellerr client ID
+
+    Skips tests if credentials are not configured.
+    """
     API_KEY = os.getenv("API_KEY")
     API_SECRET = os.getenv("API_SECRET")
     CLIENT_ID = os.getenv("CLIENT_ID")
@@ -46,7 +73,15 @@ class TestCreateAnnotationTemplateIntegration:
     """
 
     def test_create_image_template(self, integration_client):
-        """Test creating an image annotation template with bounding box and polygon."""
+        """
+        Test creating an image annotation template with bounding box and polygon.
+
+        Creates a template with:
+        - Bounding box question (red color)
+        - Polygon question (yellow color)
+
+        Verifies that the template is created successfully and has a valid ID.
+        """
         timestamp = int(time.time())
 
         template = create_template(
@@ -82,7 +117,14 @@ class TestCreateAnnotationTemplateIntegration:
         print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_video_template(self, integration_client):
-        """Test creating a video annotation template."""
+        """
+        Test creating a video annotation template.
+
+        Creates a template with:
+        - Bounding box question for video frames (blue color)
+
+        Verifies that the template is created successfully and has a valid ID.
+        """
         timestamp = int(time.time())
 
         template = create_template(
@@ -110,7 +152,18 @@ class TestCreateAnnotationTemplateIntegration:
         print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_audio_template(self, integration_client):
-        """Test creating an audio annotation template."""
+        """
+        Test creating an audio annotation template.
+
+        Creates a template with:
+        - Radio button classification question with 4 options:
+          - Speech
+          - Music
+          - Noise
+          - Silence
+
+        Verifies that the template is created successfully and has a valid ID.
+        """
         timestamp = int(time.time())
 
         template = create_template(
@@ -143,7 +196,18 @@ class TestCreateAnnotationTemplateIntegration:
         print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_document_template(self, integration_client):
-        """Test creating a document (PDF) annotation template."""
+        """
+        Test creating a document (PDF) annotation template.
+
+        Creates a template with:
+        - Select dropdown question for document classification with 4 options:
+          - Invoice
+          - Receipt
+          - Contract
+          - Other
+
+        Verifies that the template is created successfully and has a valid ID.
+        """
         timestamp = int(time.time())
 
         template = create_template(
@@ -176,7 +240,17 @@ class TestCreateAnnotationTemplateIntegration:
         print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_text_template(self, integration_client):
-        """Test creating a text annotation template."""
+        """
+        Test creating a text annotation template.
+
+        Creates a template with:
+        - Radio button question for sentiment analysis with 3 options:
+          - Positive
+          - Negative
+          - Neutral
+
+        Verifies that the template is created successfully and has a valid ID.
+        """
         timestamp = int(time.time())
 
         template = create_template(

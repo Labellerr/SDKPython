@@ -26,22 +26,19 @@ test: ## Run all tests with HTML report
 	@mkdir -p tests/integration/test_reports
 	$(PYTHON) -m pytest tests/ -v
 	@echo ""
-	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
-	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
+	@echo "✅ Tests completed! Check output above for report locations."
 
 test-unit: ## Run only unit tests
 	@mkdir -p tests/integration/test_reports
 	$(PYTHON) -m pytest tests/unit/ -v -m "unit"
 	@echo ""
-	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
-	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
+	@echo "✅ Unit tests completed! Check output above for report locations."
 
 test-integration: ## Run only integration tests (requires credentials)
 	@mkdir -p tests/integration/test_reports
 	$(PYTHON) -m pytest tests/integration/ -v -m "integration and not deprecated"
 	@echo ""
-	@echo "📊 Latest test report: tests/integration/test_reports/test-report.html"
-	@echo "📁 Timestamped reports saved in: tests/integration/test_reports/"
+	@echo "✅ Integration tests completed! Check output above for report locations."
 
 test-fast: ## Run fast tests only (exclude slow tests)
 	@mkdir -p tests/integration/test_reports

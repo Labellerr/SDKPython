@@ -1,8 +1,54 @@
 """
-Integration tests for labellerr/core/projects/__init__.py module.
+Integration tests for project creation, listing, and deletion.
 
-This module contains integration tests that make actual API calls to test
-the create_project, list_projects, and delete_project functions end-to-end.
+This module contains comprehensive integration tests that make actual API calls to test:
+- create_project() - Creating projects for all data types (image, video, audio, document, text)
+- list_projects() - Retrieving project lists with validation
+- delete_project() - Deleting projects with verification
+
+Tested Project Types:
+- Image projects with bounding box/polygon templates
+- Video projects with video annotation templates
+- Audio projects with classification templates
+- Document projects with selection templates
+- Text projects with sentiment analysis templates
+
+Features:
+- Automatic cleanup of created projects with retry logic (5 retries, exponential backoff)
+- Detailed cleanup summary with success/failure reporting
+- Dataset fixture optimization (reuse existing datasets, create if needed)
+- Comprehensive validation of project properties and API responses
+- Edge case testing (long names, special characters, rotation counts)
+
+Markers:
+- @pytest.mark.integration - All tests require real API credentials
+- @pytest.mark.slow - Tests that take longer to execute
+- @pytest.mark.destructive - Tests that delete resources (can be excluded)
+
+Required Environment Variables:
+    Core credentials:
+    - API_KEY: Labellerr API key
+    - API_SECRET: Labellerr API secret
+    - CLIENT_ID: Labellerr client ID
+    - TEST_EMAIL: Email for project creator
+
+    Dataset options (prioritized in order):
+    - {DATA_TYPE}_DATASET_ID: Existing dataset ID (fast, recommended)
+    - {DATA_TYPE}_DATASET_PATH: Path to create new dataset (slow, fallback)
+
+    Template options (optional):
+    - TEMPLATE_ID: Existing annotation template ID (fast)
+    - If not provided, creates new template for each test (slow)
+
+Examples:
+    Run all project tests:
+        pytest tests/integration/test_create_project.py -v
+
+    Run only creation tests (exclude deletion):
+        pytest tests/integration/test_create_project.py -v -m "not destructive"
+
+    Run specific data type test:
+        pytest tests/integration/test_create_project.py::TestCreateProjectIntegration::test_create_project_video_type -v
 """
 
 import os
@@ -67,7 +113,22 @@ def validate_project_response(project, context=""):
 def verify_api_credentials_before_tests():
     """
     Verify API credentials are valid before running any integration tests.
-    Fails fast if credentials are missing or invalid.
+
+    This auto-use fixture runs once per session before any tests execute.
+    It performs fast-fail validation to prevent wasting time on tests that
+    will fail due to configuration issues.
+
+    Checks:
+    1. API credentials are configured (API_KEY, API_SECRET, CLIENT_ID)
+    2. At least one dataset source is available (existing ID or path to create)
+    3. Credentials are valid by making a test API call
+
+    Skips all tests if:
+    - Credentials are missing
+    - No dataset source is available
+    - Credentials are invalid (401/403 errors)
+
+    This ensures meaningful error messages instead of cascading test failures.
     """
     api_key = os.getenv("API_KEY")
     api_secret = os.getenv("API_SECRET")
@@ -109,7 +170,18 @@ def verify_api_credentials_before_tests():
 
 @pytest.fixture(scope="module")
 def integration_client():
-    """Create a real client for integration testing"""
+    """
+    Create a LabellerrClient instance for integration testing.
+
+    This module-scoped fixture creates a single authenticated client instance
+    that is shared across all tests in the same test class/module.
+
+    Returns:
+        LabellerrClient: Authenticated client instance
+
+    Skips:
+        Tests if API_KEY, API_SECRET, or CLIENT_ID are not configured
+    """
     api_key = os.getenv("API_KEY")
     api_secret = os.getenv("API_SECRET")
     client_id = os.getenv("CLIENT_ID")
@@ -179,152 +251,173 @@ def test_dataset(integration_client):
         )
 
 
-@pytest.fixture(scope="module")
-def test_video_dataset(integration_client):
-    """Create or reuse a test video dataset for integration tests."""
-    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+def _get_or_create_dataset(integration_client, data_type: str, dataset_id_env: str, dataset_path_env: str):
+    """
+    Helper function to get existing dataset or create new one from local path.
+
+    This function implements a two-tier fallback strategy for dataset fixtures:
+    1. FAST PATH: Try to use existing dataset ID from environment variable (no uploads)
+    2. SLOW PATH: Create new dataset from local folder (uploads files)
+
+    This optimization significantly speeds up test execution when existing datasets
+    are available, as it avoids the overhead of file uploads (which can take minutes).
+
+    Args:
+        integration_client (LabellerrClient): Authenticated client instance
+        data_type (str): Type of dataset - one of: video, audio, document, text
+        dataset_id_env (str): Environment variable name for existing dataset ID
+                              Example: "VIDEO_DATASET_ID"
+        dataset_path_env (str): Environment variable name for local folder path
+                                Example: "VIDEO_DATASET_PATH"
+
+    Returns:
+        tuple[LabellerrDataset, bool]: A tuple containing:
+            - dataset: The LabellerrDataset instance (existing or newly created)
+            - created_new_dataset: Boolean flag indicating if a new dataset was created
+                                   (True = needs cleanup, False = reused existing)
+
+    Raises:
+        pytest.skip: If neither environment variable is configured
+
+    Example:
+        dataset, created = _get_or_create_dataset(
+            client, "video", "VIDEO_DATASET_ID", "VIDEO_DATASET_PATH"
+        )
+        # If created=True, the calling fixture should clean up after tests
+    """
+    from labellerr.core.datasets import create_dataset_from_local
     from labellerr.core.schemas import DatasetConfig
 
-    dataset_id = os.getenv("VIDEO_DATASET_ID")
-    video_dataset_path = os.getenv("VIDEO_DATASET_PATH")
-    created_new_dataset = False
+    dataset_id = os.getenv(dataset_id_env)
+    dataset_path = os.getenv(dataset_path_env)
 
+    # Try existing dataset first (fast)
     if dataset_id:
         try:
             dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
-            yield dataset
-            return
+            return dataset, False
         except Exception:
             pass
 
-    if video_dataset_path:
+    # Fallback: Create from local path (slow)
+    if dataset_path:
         dataset = create_dataset_from_local(
             client=integration_client,
             dataset_config=DatasetConfig(
-                dataset_name=f"SDK_Test_Video_Dataset_{int(time.time())}", data_type="video"
+                dataset_name=f"SDK_Test_{data_type.title()}_Dataset_{int(time.time())}",
+                data_type=data_type
             ),
-            folder_to_upload=video_dataset_path,
+            folder_to_upload=dataset_path,
         )
-        created_new_dataset = True
-        yield dataset
-        if created_new_dataset:
-            try:
-                delete_dataset(integration_client, dataset.dataset_id)
-            except Exception:
-                pass
-    else:
-        pytest.skip("VIDEO_DATASET_ID or VIDEO_DATASET_PATH required for video tests")
+        return dataset, True
+
+    pytest.skip(f"{dataset_id_env} or {dataset_path_env} required for {data_type} tests")
+
+
+@pytest.fixture(scope="module")
+def test_video_dataset(integration_client):
+    """Create or reuse a test video dataset for integration tests."""
+    from labellerr.core.datasets import delete_dataset
+
+    dataset, created = _get_or_create_dataset(
+        integration_client, "video", "VIDEO_DATASET_ID", "VIDEO_DATASET_PATH"
+    )
+    yield dataset
+
+    if created:
+        try:
+            delete_dataset(integration_client, dataset.dataset_id)
+        except Exception:
+            pass
 
 
 @pytest.fixture(scope="module")
 def test_audio_dataset(integration_client):
-    """Create or reuse a test audio dataset for integration tests."""
-    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
+    """
+    Create or reuse a test audio dataset for integration tests.
+
+    Prioritizes in order:
+    1. AUDIO_MP3_DATASET_ID (MP3 audio dataset)
+    2. AUDIO_WAV_DATASET_ID (WAV audio dataset)
+    3. AUDIO_DATASET_PATH (create new dataset from local files)
+    """
+    from labellerr.core.datasets import delete_dataset, create_dataset_from_local
     from labellerr.core.schemas import DatasetConfig
 
-    dataset_id = os.getenv("AUDIO_DATASET_ID")
-    audio_dataset_path = os.getenv("AUDIO_DATASET_PATH")
-    created_new_dataset = False
-
-    if dataset_id:
+    # Try MP3 dataset first
+    audio_mp3_id = os.getenv("AUDIO_MP3_DATASET_ID")
+    if audio_mp3_id:
         try:
-            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
+            dataset = LabellerrDataset(client=integration_client, dataset_id=audio_mp3_id)
             yield dataset
             return
         except Exception:
             pass
 
-    if audio_dataset_path:
+    # Try WAV dataset
+    audio_wav_id = os.getenv("AUDIO_WAV_DATASET_ID")
+    if audio_wav_id:
+        try:
+            dataset = LabellerrDataset(client=integration_client, dataset_id=audio_wav_id)
+            yield dataset
+            return
+        except Exception:
+            pass
+
+    # Fallback: Create from local path
+    audio_path = os.getenv("AUDIO_DATASET_PATH")
+    if audio_path:
         dataset = create_dataset_from_local(
             client=integration_client,
             dataset_config=DatasetConfig(
-                dataset_name=f"SDK_Test_Audio_Dataset_{int(time.time())}", data_type="audio"
+                dataset_name=f"SDK_Test_Audio_Dataset_{int(time.time())}",
+                data_type="audio"
             ),
-            folder_to_upload=audio_dataset_path,
+            folder_to_upload=audio_path,
         )
-        created_new_dataset = True
         yield dataset
-        if created_new_dataset:
-            try:
-                delete_dataset(integration_client, dataset.dataset_id)
-            except Exception:
-                pass
+
+        # Cleanup created dataset
+        try:
+            delete_dataset(integration_client, dataset.dataset_id)
+        except Exception:
+            pass
     else:
-        pytest.skip("AUDIO_DATASET_ID or AUDIO_DATASET_PATH required for audio tests")
+        pytest.skip("AUDIO_MP3_DATASET_ID, AUDIO_WAV_DATASET_ID, or AUDIO_DATASET_PATH required")
 
 
 @pytest.fixture(scope="module")
 def test_document_dataset(integration_client):
     """Create or reuse a test document (PDF) dataset for integration tests."""
-    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
-    from labellerr.core.schemas import DatasetConfig
+    from labellerr.core.datasets import delete_dataset
 
-    dataset_id = os.getenv("DOCUMENT_DATASET_ID")
-    document_dataset_path = os.getenv("DOCUMENT_DATASET_PATH")
-    created_new_dataset = False
+    dataset, created = _get_or_create_dataset(
+        integration_client, "document", "DOCUMENT_DATASET_ID", "DOCUMENT_DATASET_PATH"
+    )
+    yield dataset
 
-    if dataset_id:
+    if created:
         try:
-            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
-            yield dataset
-            return
+            delete_dataset(integration_client, dataset.dataset_id)
         except Exception:
             pass
-
-    if document_dataset_path:
-        dataset = create_dataset_from_local(
-            client=integration_client,
-            dataset_config=DatasetConfig(
-                dataset_name=f"SDK_Test_Document_Dataset_{int(time.time())}", data_type="document"
-            ),
-            folder_to_upload=document_dataset_path,
-        )
-        created_new_dataset = True
-        yield dataset
-        if created_new_dataset:
-            try:
-                delete_dataset(integration_client, dataset.dataset_id)
-            except Exception:
-                pass
-    else:
-        pytest.skip("DOCUMENT_DATASET_ID or DOCUMENT_DATASET_PATH required for document tests")
 
 
 @pytest.fixture(scope="module")
 def test_text_dataset(integration_client):
     """Create or reuse a test text dataset for integration tests."""
-    from labellerr.core.datasets import create_dataset_from_local, delete_dataset
-    from labellerr.core.schemas import DatasetConfig
+    from labellerr.core.datasets import delete_dataset
 
-    dataset_id = os.getenv("TEXT_DATASET_ID")
-    text_dataset_path = os.getenv("TEXT_DATASET_PATH")
-    created_new_dataset = False
+    dataset, created = _get_or_create_dataset(
+        integration_client, "text", "TEXT_DATASET_ID", "TEXT_DATASET_PATH"
+    )
+    yield dataset
 
-    if dataset_id:
+    if created:
         try:
-            dataset = LabellerrDataset(client=integration_client, dataset_id=dataset_id)
-            yield dataset
-            return
+            delete_dataset(integration_client, dataset.dataset_id)
         except Exception:
             pass
-
-    if text_dataset_path:
-        dataset = create_dataset_from_local(
-            client=integration_client,
-            dataset_config=DatasetConfig(
-                dataset_name=f"SDK_Test_Text_Dataset_{int(time.time())}", data_type="text"
-            ),
-            folder_to_upload=text_dataset_path,
-        )
-        created_new_dataset = True
-        yield dataset
-        if created_new_dataset:
-            try:
-                delete_dataset(integration_client, dataset.dataset_id)
-            except Exception:
-                pass
-    else:
-        pytest.skip("TEXT_DATASET_ID or TEXT_DATASET_PATH required for text tests")
 
 
 @pytest.fixture(scope="module")
@@ -394,13 +487,30 @@ def test_template(integration_client):
 
 @pytest.fixture
 def email_id():
-    """Get email ID for test projects"""
+    """
+    Get email ID for test project creator.
+
+    Returns:
+        str: Email address from TEST_EMAIL environment variable,
+             or "test@example.com" as default
+    """
     return os.getenv("TEST_EMAIL", "test@example.com")
 
 
 @pytest.fixture
 def default_rotation_config():
-    """Create default rotation configuration"""
+    """
+    Create default rotation configuration for projects.
+
+    Returns:
+        RotationConfig: Configuration with minimal rotation counts:
+            - annotation_rotation_count: 1 (each task annotated once)
+            - review_rotation_count: 1 (each annotation reviewed once)
+            - client_review_rotation_count: 1 (each review client-reviewed once)
+
+    This configuration minimizes processing time for test projects while
+    still exercising the full workflow pipeline.
+    """
     return RotationConfig(
         annotation_rotation_count=1,
         review_rotation_count=1,
@@ -411,11 +521,27 @@ def default_rotation_config():
 @pytest.fixture(scope="class")
 def cleanup_projects(integration_client):
     """
-    Fixture for automatic project cleanup after all tests in the class.
+    Fixture for automatic project cleanup after all tests in the class complete.
+
+    This class-scoped fixture provides a registration function that tests can call
+    to mark projects for automatic deletion. Cleanup happens after all tests in the
+    test class finish, with robust retry logic to handle temporary failures.
+
+    Features:
+    - Automatic retry with exponential backoff (5 retries, 3-10 seconds delay)
+    - Status checking before deletion to handle "In Progress" states
+    - Detailed cleanup summary with success/failure reporting
+    - Manual cleanup instructions for failed deletions
 
     Usage in tests:
-        project = create_project(...)
-        cleanup_projects(project.project_id)
+        def test_example(integration_client, cleanup_projects):
+            project = create_project(...)
+            cleanup_projects(project.project_id)  # Register for cleanup
+            # Test continues...
+            # Cleanup happens automatically after all tests
+
+    Returns:
+        Callable[[str], None]: Registration function that accepts a project_id
     """
     projects_to_cleanup = []
 
@@ -1373,6 +1499,7 @@ class TestProjectWorkflow:
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.destructive
 class ZZTestDeleteProjectIntegration:
     """
     Integration tests for delete_project function.

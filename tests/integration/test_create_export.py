@@ -60,10 +60,32 @@ def cleanup_exports(project):
 
 @pytest.mark.integration
 class TestCreateExportIntegration:
-    """Integration tests for export creation."""
+    """
+    Integration tests for export creation.
+
+    Tests the project.create_export() method with various configurations:
+    - Basic export creation
+    - Status checking
+    - Polling until completion
+    - Different export formats
+    - Multiple annotation statuses
+
+    All tests use the same PROJECT_ID from environment variables.
+    """
 
     def test_create_local_export_basic(self, project, cleanup_exports):
-        """Test creating a basic local export with COCO JSON format."""
+        """
+        Test creating a basic local export with COCO JSON format.
+
+        Creates an export with:
+        - Format: COCO JSON
+        - Destination: LOCAL
+        - Statuses: review, r_assigned, client_review, cr_assigned, accepted
+
+        Verifies:
+        - Export is created with valid report_id
+        - Report ID is a non-empty string
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         export_config = CreateExportParams(
@@ -88,7 +110,17 @@ class TestCreateExportIntegration:
         print(f"\n✓ Export created: {export.report_id}")
 
     def test_create_local_export_with_status_check(self, project, cleanup_exports):
-        """Test creating an export and checking its status."""
+        """
+        Test creating an export and checking its status (single check, no polling).
+
+        Creates an export and performs a single status check without waiting
+        for completion.
+
+        Verifies:
+        - Export is created successfully
+        - Status can be retrieved
+        - Status is a dictionary with expected structure
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         export_config = CreateExportParams(
@@ -115,7 +147,22 @@ class TestCreateExportIntegration:
         print(f"📊 Initial status: {status.get('export_status', 'unknown')}")
 
     def test_create_local_export_and_poll(self, project, cleanup_exports):
-        """Test creating an export and polling until completion."""
+        """
+        Test creating an export and polling until completion.
+
+        Creates an export and polls status every 3 seconds until:
+        - Export completes (status: 'created')
+        - Export fails (status: 'failed')
+        - Timeout reached (300 seconds / 5 minutes)
+
+        Verifies:
+        - Export is created successfully
+        - Polling returns final status
+        - Status reaches a terminal state or timeout
+
+        Note: This test may take several minutes to complete depending on
+        project size and annotation count.
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         export_config = CreateExportParams(

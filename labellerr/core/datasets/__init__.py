@@ -8,6 +8,7 @@ from .audio_dataset import AudioDataSet as LabellerrAudioDataset
 from .base import LabellerrDataset
 from .document_dataset import DocumentDataSet as LabellerrDocumentDataset
 from .image_dataset import ImageDataset as LabellerrImageDataset
+from .text_dataset import TextDataset as LabellerrTextDataset
 from .utils import upload_files, upload_folder_files_to_dataset
 from .video_dataset import VideoDataset as LabellerrVideoDataset
 from ..connectors import LabellerrConnection
@@ -20,6 +21,7 @@ __all__ = [
     "LabellerrDataset",
     "LabellerrAudioDataset",
     "LabellerrDocumentDataset",
+    "LabellerrTextDataset",
 ]
 
 

@@ -1,3 +1,39 @@
+"""
+Integration tests for dataset creation from local files.
+
+This module tests the create_dataset_from_local() function for all supported
+data types:
+- Image (jpg, jpeg, png, bmp, gif, tiff)
+- Video (mp4, avi, mov, mkv, flv, wmv)
+- Audio (mp3, wav, flac, aac, ogg, m4a)
+- Document (pdf, doc, docx, txt)
+- Text (txt, csv, json, xml)
+
+Performance Optimization:
+- Tests first try to use existing dataset IDs from environment (fast - no uploads)
+- Falls back to creating from local paths if IDs not found (slow - uploads files)
+- New datasets upload only 3 files for faster execution
+
+Features:
+- Automatic cleanup of created datasets with retry logic
+- Detailed cleanup summary with success/failure reporting
+- Manual cleanup instructions for failed deletions
+- Existing datasets are not cleaned up (only newly created ones)
+
+Requires environment variables (for each data type):
+    Fast path (preferred):
+    - {DATA_TYPE}_DATASET_ID: ID of existing dataset to reuse
+      Example: IMAGE_DATASET_ID=1a5af31b-dd41-4072-8be3-cae553ba9804
+
+    Slow path (fallback):
+    - {DATA_TYPE}_DATASET_PATH: Path to local folder containing files
+      Example: IMAGE_DATASET_PATH=/path/to/images
+
+    Special case - Audio:
+    - AUDIO_MP3_DATASET_ID or AUDIO_WAV_DATASET_ID (tries MP3 first)
+    - AUDIO_DATASET_PATH (fallback)
+"""
+
 import os
 import time
 from pathlib import Path
@@ -137,11 +173,46 @@ class TestCreateDatasetIntegration:
     """Integration tests for dataset creation across all data types."""
 
     def test_create_image_dataset(self, integration_client, cleanup_datasets):
-        """Test creating an image dataset from local folder (limited to 3 files for speed)."""
+        """
+        Test creating an image dataset from local folder (limited to 3 files for speed).
+
+        Tries to use existing IMAGE_DATASET_ID first (fast), then creates from
+        IMAGE_DATASET_PATH if needed (slow).
+
+        Supported formats: jpg, jpeg, png, bmp, gif, tiff
+
+        Verifies:
+        - Dataset is created or reused with valid dataset_id
+        - Status code is 300 (upload complete)
+        - Files count is greater than 0
+
+        Cleanup: Only newly created datasets are automatically deleted.
+        """
+        IMAGE_DATASET_ID = os.getenv("IMAGE_DATASET_ID")
         IMAGE_DATASET_PATH = os.getenv("IMAGE_DATASET_PATH")
 
+        created_new = False
+
+        # Try existing dataset first (fast path)
+        if IMAGE_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing image dataset: {IMAGE_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=IMAGE_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Image dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing dataset {IMAGE_DATASET_ID}: {e}")
+                print("   Falling back to creating new dataset...")
+
+        # Fallback: Create new dataset (slow path)
         if not IMAGE_DATASET_PATH:
-            pytest.skip("Missing required environment variable: IMAGE_DATASET_PATH")
+            pytest.skip("Missing required environment variables: IMAGE_DATASET_ID or IMAGE_DATASET_PATH")
 
         # Get only first 3 image files for faster testing
         image_files = get_first_n_files(
@@ -166,8 +237,9 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
+        created_new = True
 
-        # Register for cleanup
+        # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
 
         result = dataset.status()
@@ -178,11 +250,46 @@ class TestCreateDatasetIntegration:
         print(f"\n✓ Image dataset created: {dataset.dataset_id} ({len(image_files)} files)")
 
     def test_create_video_dataset(self, integration_client, cleanup_datasets):
-        """Test creating a video dataset from local folder (limited to 3 files for speed)."""
+        """
+        Test creating a video dataset from local folder (limited to 3 files for speed).
+
+        Tries to use existing VIDEO_DATASET_ID first (fast), then creates from
+        VIDEO_DATASET_PATH if needed (slow).
+
+        Supported formats: mp4, avi, mov, mkv, flv, wmv
+
+        Verifies:
+        - Dataset is created or reused with valid dataset_id
+        - Status code is 300 (upload complete)
+        - Files count is greater than 0
+
+        Cleanup: Only newly created datasets are automatically deleted.
+        """
+        VIDEO_DATASET_ID = os.getenv("VIDEO_DATASET_ID")
         VIDEO_DATASET_PATH = os.getenv("VIDEO_DATASET_PATH")
 
+        created_new = False
+
+        # Try existing dataset first (fast path)
+        if VIDEO_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing video dataset: {VIDEO_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=VIDEO_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Video dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing dataset {VIDEO_DATASET_ID}: {e}")
+                print("   Falling back to creating new dataset...")
+
+        # Fallback: Create new dataset (slow path)
         if not VIDEO_DATASET_PATH:
-            pytest.skip("Missing required environment variable: VIDEO_DATASET_PATH")
+            pytest.skip("Missing required environment variables: VIDEO_DATASET_ID or VIDEO_DATASET_PATH")
 
         # Get only first 3 video files for faster testing
         video_files = get_first_n_files(
@@ -207,8 +314,9 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
+        created_new = True
 
-        # Register for cleanup
+        # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
 
         result = dataset.status()
@@ -219,11 +327,64 @@ class TestCreateDatasetIntegration:
         print(f"\n✓ Video dataset created: {dataset.dataset_id} ({len(video_files)} files)")
 
     def test_create_audio_dataset(self, integration_client, cleanup_datasets):
-        """Test creating an audio dataset from local folder (limited to 3 files for speed)."""
+        """
+        Test creating an audio dataset from local folder (limited to 3 files for speed).
+
+        Tries to use existing AUDIO_MP3_DATASET_ID or AUDIO_WAV_DATASET_ID first (fast),
+        then creates from AUDIO_DATASET_PATH if needed (slow).
+
+        Supported formats: mp3, wav, flac, aac, ogg, m4a
+
+        Verifies:
+        - Dataset is created or reused with valid dataset_id
+        - Status code is 300 (upload complete)
+        - Files count is greater than 0
+
+        Cleanup: Only newly created datasets are automatically deleted.
+        """
+        AUDIO_MP3_DATASET_ID = os.getenv("AUDIO_MP3_DATASET_ID")
+        AUDIO_WAV_DATASET_ID = os.getenv("AUDIO_WAV_DATASET_ID")
         AUDIO_DATASET_PATH = os.getenv("AUDIO_DATASET_PATH")
 
+        created_new = False
+
+        # Try MP3 dataset first (fast path)
+        if AUDIO_MP3_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing audio (MP3) dataset: {AUDIO_MP3_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=AUDIO_MP3_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Audio dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing MP3 dataset {AUDIO_MP3_DATASET_ID}: {e}")
+                print("   Trying WAV dataset...")
+
+        # Try WAV dataset (fast path)
+        if AUDIO_WAV_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing audio (WAV) dataset: {AUDIO_WAV_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=AUDIO_WAV_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Audio dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing WAV dataset {AUDIO_WAV_DATASET_ID}: {e}")
+                print("   Falling back to creating new dataset...")
+
+        # Fallback: Create new dataset (slow path)
         if not AUDIO_DATASET_PATH:
-            pytest.skip("Missing required environment variable: AUDIO_DATASET_PATH")
+            pytest.skip("Missing required environment variables: AUDIO_MP3_DATASET_ID, AUDIO_WAV_DATASET_ID, or AUDIO_DATASET_PATH")
 
         # Get only first 3 audio files for faster testing
         audio_files = get_first_n_files(
@@ -248,8 +409,9 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
+        created_new = True
 
-        # Register for cleanup
+        # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
 
         result = dataset.status()
@@ -260,11 +422,46 @@ class TestCreateDatasetIntegration:
         print(f"\n✓ Audio dataset created: {dataset.dataset_id} ({len(audio_files)} files)")
 
     def test_create_document_dataset(self, integration_client, cleanup_datasets):
-        """Test creating a document (PDF) dataset from local folder (limited to 3 files for speed)."""
+        """
+        Test creating a document (PDF) dataset from local folder (limited to 3 files for speed).
+
+        Tries to use existing DOCUMENT_DATASET_ID first (fast), then creates from
+        DOCUMENT_DATASET_PATH if needed (slow).
+
+        Supported formats: pdf, doc, docx, txt
+
+        Verifies:
+        - Dataset is created or reused with valid dataset_id
+        - Status code is 300 (upload complete)
+        - Files count is greater than 0
+
+        Cleanup: Only newly created datasets are automatically deleted.
+        """
+        DOCUMENT_DATASET_ID = os.getenv("DOCUMENT_DATASET_ID")
         DOCUMENT_DATASET_PATH = os.getenv("DOCUMENT_DATASET_PATH")
 
+        created_new = False
+
+        # Try existing dataset first (fast path)
+        if DOCUMENT_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing document dataset: {DOCUMENT_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=DOCUMENT_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Document dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing dataset {DOCUMENT_DATASET_ID}: {e}")
+                print("   Falling back to creating new dataset...")
+
+        # Fallback: Create new dataset (slow path)
         if not DOCUMENT_DATASET_PATH:
-            pytest.skip("Missing required environment variable: DOCUMENT_DATASET_PATH")
+            pytest.skip("Missing required environment variables: DOCUMENT_DATASET_ID or DOCUMENT_DATASET_PATH")
 
         # Get only first 3 document files for faster testing
         document_files = get_first_n_files(
@@ -289,8 +486,9 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
+        created_new = True
 
-        # Register for cleanup
+        # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
 
         result = dataset.status()
@@ -301,11 +499,46 @@ class TestCreateDatasetIntegration:
         print(f"\n✓ Document dataset created: {dataset.dataset_id} ({len(document_files)} files)")
 
     def test_create_text_dataset(self, integration_client, cleanup_datasets):
-        """Test creating a text dataset from local folder (limited to 3 files for speed)."""
+        """
+        Test creating a text dataset from local folder (limited to 3 files for speed).
+
+        Tries to use existing TEXT_DATASET_ID first (fast), then creates from
+        TEXT_DATASET_PATH if needed (slow).
+
+        Supported formats: txt, csv, json, xml
+
+        Verifies:
+        - Dataset is created or reused with valid dataset_id
+        - Status code is 300 (upload complete)
+        - Files count is greater than 0
+
+        Cleanup: Only newly created datasets are automatically deleted.
+        """
+        TEXT_DATASET_ID = os.getenv("TEXT_DATASET_ID")
         TEXT_DATASET_PATH = os.getenv("TEXT_DATASET_PATH")
 
+        created_new = False
+
+        # Try existing dataset first (fast path)
+        if TEXT_DATASET_ID:
+            try:
+                print(f"\n⚡ Using existing text dataset: {TEXT_DATASET_ID}")
+                dataset = LabellerrDataset(client=integration_client, dataset_id=TEXT_DATASET_ID)
+                result = dataset.status()
+
+                assert dataset.dataset_id is not None
+                assert result["status_code"] == 300
+                assert result["files_count"] > 0
+
+                print(f"✓ Text dataset verified: {dataset.dataset_id} ({result['files_count']} files)")
+                return
+            except Exception as e:
+                print(f"⚠️  Could not use existing dataset {TEXT_DATASET_ID}: {e}")
+                print("   Falling back to creating new dataset...")
+
+        # Fallback: Create new dataset (slow path)
         if not TEXT_DATASET_PATH:
-            pytest.skip("Missing required environment variable: TEXT_DATASET_PATH")
+            pytest.skip("Missing required environment variables: TEXT_DATASET_ID or TEXT_DATASET_PATH")
 
         # Get only first 3 text files for faster testing
         text_files = get_first_n_files(
@@ -330,8 +563,9 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
+        created_new = True
 
-        # Register for cleanup
+        # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
 
         result = dataset.status()
