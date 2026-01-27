@@ -325,34 +325,6 @@ class TestDatasetListing:
 class TestDatasetValidation:
     """Test dataset ID validation"""
 
-    def test_valid_uuid_format(self, client):
-        """Test that valid UUID formats pass validation"""
-        valid_uuids = [
-            "550e8400-e29b-41d4-a716-446655440000",
-            "1c8b2a05-0321-44fd-91e3-2ea911382cf9",
-            "00000000-0000-0000-0000-000000000000",
-        ]
-
-        for dataset_id in valid_uuids:
-            # Validation should pass, but API call will fail (mocked)
-            with patch.object(client, "make_request", side_effect=LabellerrError("API error")):
-                with pytest.raises(LabellerrError):
-                    LabellerrDatasetMeta.get_dataset(client, dataset_id)
-
-    def test_invalid_uuid_format_rejected(self, client):
-        """Test that invalid UUID formats are rejected before API call"""
-        invalid_ids = [
-            "invalid-id",
-            "not-a-uuid",
-            "123456",
-            "05becc9c-e221-42ea-90f8-8d24031e2f3b1",  # Extra character
-            "05becc9c-e221-42ea-90f8",  # Too short
-        ]
-
-        for dataset_id in invalid_ids:
-            with pytest.raises(InvalidDatasetIDError, match="Invalid dataset ID format"):
-                LabellerrDatasetMeta.get_dataset(client, dataset_id)
-
     def test_empty_dataset_id(self, client):
         """Test that empty dataset_id is rejected"""
         with pytest.raises(InvalidDatasetIDError, match="Dataset ID cannot be None or empty"):

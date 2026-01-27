@@ -201,7 +201,7 @@ class TestDatasetCreationIntegration:
                 assert isinstance(dataset.name, str)
 
             # Print properties for verification
-            print(f"\nDataset Properties:")
+            print("\nDataset Properties:")
             print(f"  ID: {dataset.dataset_id}")
             print(f"  Name: {dataset.name}")
             print(f"  Data Type: {dataset.data_type}")
@@ -214,7 +214,7 @@ class TestDatasetCreationIntegration:
             assert status is not None
 
     def test_create_dataset_from_connection_with_existing_connection(
-        self, integration_client, test_credentials, test_project_ids
+        self, integration_client
     ):
         """Test creating a dataset using an existing connection"""
         # Skip if no connection ID available
