@@ -54,7 +54,7 @@ def upload_to_gcs_direct(signed_url, file_path, chunk_size=8192):
             signed_url,
             headers=headers,
             data=f,
-            timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
+            timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
         )
 
     _handle_gcs_response(upload_response, "direct upload")
@@ -77,9 +77,7 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
         "Content-Length": "0",
     }
     response = requests.post(
-        signed_url,
-        headers=headers,
-        timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
+        signed_url, headers=headers, timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
     )
     _handle_gcs_response(response, "resumable_start")
     upload_url = response.headers["Location"]
@@ -97,7 +95,7 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
                 upload_url,
                 headers=headers,
                 data=f,
-                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
+                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
             )
         else:
             # Large file - upload using streaming
@@ -110,7 +108,7 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
                 upload_url,
                 headers=headers,
                 data=f,
-                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
+                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
             )
 
     _handle_gcs_response(upload_response, "resumable upload")

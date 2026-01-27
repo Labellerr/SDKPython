@@ -194,8 +194,8 @@ class LabellerrClient:
             kwargs["headers"] = headers
 
         # Set default timeout if not provided
-        if 'timeout' not in kwargs:
-            kwargs['timeout'] = 30  # 30 second default timeout
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = 30  # 30 second default timeout
 
         # Make the request
         if self._session:

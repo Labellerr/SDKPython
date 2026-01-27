@@ -5,7 +5,6 @@ Tests creating exports, checking status, and cleanup.
 """
 
 import os
-import time
 import pytest
 from datetime import datetime
 from dotenv import load_dotenv
@@ -28,7 +27,9 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 def client():
     """Create a client instance for the test session."""
     if not all([API_KEY, API_SECRET, CLIENT_ID]):
-        pytest.skip("Missing required environment variables: API_KEY, API_SECRET, CLIENT_ID")
+        pytest.skip(
+            "Missing required environment variables: API_KEY, API_SECRET, CLIENT_ID"
+        )
 
     return LabellerrClient(api_key=API_KEY, api_secret=API_SECRET, client_id=CLIENT_ID)
 
@@ -92,8 +93,14 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_{timestamp}",
             export_description="Integration test export - basic COCO JSON",
             export_format="coco_json",
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -127,8 +134,14 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_Status_{timestamp}",
             export_description="Integration test export - with status check",
             export_format="coco_json",
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -169,8 +182,14 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_Poll_{timestamp}",
             export_description="Integration test export - poll until completion",
             export_format="coco_json",
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -204,13 +223,15 @@ class TestCreateExportIntegration:
         # Verify export reached a terminal state or is still processing
         # Valid terminal states: 'created' (success), 'failed' (error)
         # If still processing after timeout, that's also acceptable for this test
-        terminal_states = ['created', 'Created', 'failed', 'Failed']
+        terminal_states = ["created", "Created", "failed", "Failed"]
         if export_status not in terminal_states:
             print(f"⚠️  Export still processing after timeout. Status: {export_status}")
             # Don't fail the test - just warn that it's still processing
         else:
-            assert export_status.lower() in ['created', 'failed'], \
-                f"Unexpected terminal state: {export_status}"
+            assert export_status.lower() in [
+                "created",
+                "failed",
+            ], f"Unexpected terminal state: {export_status}"
 
     def test_create_export_different_formats(self, project, cleanup_exports):
         """Test creating exports with different export formats."""
@@ -221,8 +242,14 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_Format_{timestamp}",
             export_description="Integration test export - different format",
             export_format="coco_json",  # You can test other formats like "yolo", "csv", etc.
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -242,8 +269,14 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_Multi_{timestamp}",
             export_description="Integration test export - multiple statuses",
             export_format="coco_json",
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -263,8 +296,15 @@ class TestCreateExportIntegration:
             export_name=f"SDK_Test_Export_Repr_{timestamp}",
             export_description="Integration test export - repr test",
             export_format="coco_json",
-            statuses=['review', 'r_assigned', 'client_review', 'cr_assigned', 'accepted', 'critical'],
-            export_destination=ExportDestination.LOCAL
+            statuses=[
+                "review",
+                "r_assigned",
+                "client_review",
+                "cr_assigned",
+                "accepted",
+                "critical",
+            ],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export
@@ -295,8 +335,8 @@ class TestExportErrors:
             export_name=f"SDK_Test_Export_Invalid_{timestamp}",
             export_description="Integration test export - invalid status",
             export_format="coco_json",
-            statuses=['invalid_status'],
-            export_destination=ExportDestination.LOCAL
+            statuses=["invalid_status"],
+            export_destination=ExportDestination.LOCAL,
         )
 
         # Create export - may succeed or fail depending on backend validation
@@ -304,7 +344,9 @@ class TestExportErrors:
             export = project.create_export(export_config)
             if export and export.report_id:
                 cleanup_exports.append(export.report_id)
-                print(f"\n✓ Export created even with invalid status: {export.report_id}")
+                print(
+                    f"\n✓ Export created even with invalid status: {export.report_id}"
+                )
         except Exception as e:
             print(f"\n✓ Export correctly failed with invalid status: {e}")
             # This is acceptable - backend rejected invalid status

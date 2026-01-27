@@ -13,7 +13,7 @@ provide a delete_template() function. Templates will accumulate with each test r
 Manual cleanup may be required periodically via the Labellerr UI.
 """
 
-import os
+import logging
 import time
 import uuid
 
@@ -32,36 +32,41 @@ from labellerr.core.schemas.annotation_templates import (
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-CLIENT_ID = os.getenv("CLIENT_ID")
+logger = logging.getLogger(__name__)
+
+# integration_client fixture is now shared in tests/conftest.py
 
 
-@pytest.fixture(scope="session")
-def integration_client():
-    """
-    Create a client instance for integration tests.
+# ============================================================================
+# Internal Helper Functions
+# ============================================================================
 
-    This is a session-scoped fixture that creates a single client instance
-    shared across all tests in this module to avoid repeated authentication.
 
-    Requires environment variables:
-        - API_KEY: Labellerr API key
-        - API_SECRET: Labellerr API secret
-        - CLIENT_ID: Labellerr client ID
-
-    Skips tests if credentials are not configured.
-    """
-    API_KEY = os.getenv("API_KEY")
-    API_SECRET = os.getenv("API_SECRET")
-    CLIENT_ID = os.getenv("CLIENT_ID")
-
-    if not all([API_KEY, API_SECRET, CLIENT_ID]):
-        pytest.skip("Missing required environment variables: API_KEY, API_SECRET, CLIENT_ID")
-
-    return LabellerrClient(
-        api_key=API_KEY, api_secret=API_SECRET, client_id=CLIENT_ID
+def _create_and_validate_template(
+    client: LabellerrClient,
+    template_name: str,
+    data_type: DatasetDataType,
+    questions: list,
+):
+    """Create an annotation template and validate it was created successfully."""
+    template = create_template(
+        client=client,
+        params=CreateTemplateParams(
+            template_name=template_name,
+            data_type=data_type,
+            questions=questions,
+        ),
     )
+
+    assert template.annotation_template_id is not None
+    assert isinstance(template.annotation_template_id, str)
+
+    logger.info(
+        f"{data_type.value.capitalize()} template created: {template.annotation_template_id}"
+    )
+    logger.warning("Template cannot be auto-deleted (no SDK delete function)")
+
+    return template
 
 
 @pytest.mark.integration
@@ -73,210 +78,118 @@ class TestCreateAnnotationTemplateIntegration:
     """
 
     def test_create_image_template(self, integration_client):
-        """
-        Test creating an image annotation template with bounding box and polygon.
-
-        Creates a template with:
-        - Bounding box question (red color)
-        - Polygon question (yellow color)
-
-        Verifies that the template is created successfully and has a valid ID.
-        """
+        """Test creating image template with bounding box and polygon questions."""
         timestamp = int(time.time())
-
-        template = create_template(
+        _create_and_validate_template(
             client=integration_client,
-            params=CreateTemplateParams(
-                template_name=f"SDK_Test_Image_Template_{timestamp}",
-                data_type=DatasetDataType.image,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="TEST QUESTION - Bounding Box",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.bounding_box,
-                        required=True,
-                        color="#FF0000",
-                    ),
-                    AnnotationQuestion(
-                        question_number=2,
-                        question="TEST QUESTION - Polygon",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.polygon,
-                        required=True,
-                        color="#FFC800",
-                    ),
-                ],
-            ),
+            template_name=f"SDK_Test_Image_Template_{timestamp}",
+            data_type=DatasetDataType.image,
+            questions=[
+                AnnotationQuestion(
+                    question_number=1,
+                    question="TEST QUESTION - Bounding Box",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.bounding_box,
+                    required=True,
+                    color="#FF0000",
+                ),
+                AnnotationQuestion(
+                    question_number=2,
+                    question="TEST QUESTION - Polygon",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.polygon,
+                    required=True,
+                    color="#FFC800",
+                ),
+            ],
         )
-
-        assert template.annotation_template_id is not None
-        assert isinstance(template.annotation_template_id, str)
-
-        print(f"\n✓ Image template created: {template.annotation_template_id}")
-        print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_video_template(self, integration_client):
-        """
-        Test creating a video annotation template.
-
-        Creates a template with:
-        - Bounding box question for video frames (blue color)
-
-        Verifies that the template is created successfully and has a valid ID.
-        """
+        """Test creating video template with bounding box question."""
         timestamp = int(time.time())
-
-        template = create_template(
+        _create_and_validate_template(
             client=integration_client,
-            params=CreateTemplateParams(
-                template_name=f"SDK_Test_Video_Template_{timestamp}",
-                data_type=DatasetDataType.video,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="TEST QUESTION - Video Bounding Box",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.bounding_box,
-                        required=True,
-                        color="#0000FF",
-                    ),
-                ],
-            ),
+            template_name=f"SDK_Test_Video_Template_{timestamp}",
+            data_type=DatasetDataType.video,
+            questions=[
+                AnnotationQuestion(
+                    question_number=1,
+                    question="TEST QUESTION - Video Bounding Box",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.bounding_box,
+                    required=True,
+                    color="#0000FF",
+                ),
+            ],
         )
-
-        assert template.annotation_template_id is not None
-        assert isinstance(template.annotation_template_id, str)
-
-        print(f"\n✓ Video template created: {template.annotation_template_id}")
-        print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_audio_template(self, integration_client):
-        """
-        Test creating an audio annotation template.
-
-        Creates a template with:
-        - Radio button classification question with 4 options:
-          - Speech
-          - Music
-          - Noise
-          - Silence
-
-        Verifies that the template is created successfully and has a valid ID.
-        """
+        """Test creating audio template with radio button classification question."""
         timestamp = int(time.time())
-
-        template = create_template(
+        _create_and_validate_template(
             client=integration_client,
-            params=CreateTemplateParams(
-                template_name=f"SDK_Test_Audio_Template_{timestamp}",
-                data_type=DatasetDataType.audio,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="TEST QUESTION - Audio Classification",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.radio,
-                        required=True,
-                        options=[
-                            Option(option_name="Speech"),
-                            Option(option_name="Music"),
-                            Option(option_name="Noise"),
-                            Option(option_name="Silence"),
-                        ],
-                    ),
-                ],
-            ),
+            template_name=f"SDK_Test_Audio_Template_{timestamp}",
+            data_type=DatasetDataType.audio,
+            questions=[
+                AnnotationQuestion(
+                    question_number=1,
+                    question="TEST QUESTION - Audio Classification",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.radio,
+                    required=True,
+                    options=[
+                        Option(option_name="Speech"),
+                        Option(option_name="Music"),
+                        Option(option_name="Noise"),
+                        Option(option_name="Silence"),
+                    ],
+                ),
+            ],
         )
-
-        assert template.annotation_template_id is not None
-        assert isinstance(template.annotation_template_id, str)
-
-        print(f"\n✓ Audio template created: {template.annotation_template_id}")
-        print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_document_template(self, integration_client):
-        """
-        Test creating a document (PDF) annotation template.
-
-        Creates a template with:
-        - Select dropdown question for document classification with 4 options:
-          - Invoice
-          - Receipt
-          - Contract
-          - Other
-
-        Verifies that the template is created successfully and has a valid ID.
-        """
+        """Test creating document template with select dropdown question."""
         timestamp = int(time.time())
-
-        template = create_template(
+        _create_and_validate_template(
             client=integration_client,
-            params=CreateTemplateParams(
-                template_name=f"SDK_Test_Document_Template_{timestamp}",
-                data_type=DatasetDataType.document,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="TEST QUESTION - Document Type",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.select,
-                        required=True,
-                        options=[
-                            Option(option_name="Invoice"),
-                            Option(option_name="Receipt"),
-                            Option(option_name="Contract"),
-                            Option(option_name="Other"),
-                        ],
-                    ),
-                ],
-            ),
+            template_name=f"SDK_Test_Document_Template_{timestamp}",
+            data_type=DatasetDataType.document,
+            questions=[
+                AnnotationQuestion(
+                    question_number=1,
+                    question="TEST QUESTION - Document Type",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.select,
+                    required=True,
+                    options=[
+                        Option(option_name="Invoice"),
+                        Option(option_name="Receipt"),
+                        Option(option_name="Contract"),
+                        Option(option_name="Other"),
+                    ],
+                ),
+            ],
         )
-
-        assert template.annotation_template_id is not None
-        assert isinstance(template.annotation_template_id, str)
-
-        print(f"\n✓ Document template created: {template.annotation_template_id}")
-        print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")
 
     def test_create_text_template(self, integration_client):
-        """
-        Test creating a text annotation template.
-
-        Creates a template with:
-        - Radio button question for sentiment analysis with 3 options:
-          - Positive
-          - Negative
-          - Neutral
-
-        Verifies that the template is created successfully and has a valid ID.
-        """
+        """Test creating text template with radio button sentiment question."""
         timestamp = int(time.time())
-
-        template = create_template(
+        _create_and_validate_template(
             client=integration_client,
-            params=CreateTemplateParams(
-                template_name=f"SDK_Test_Text_Template_{timestamp}",
-                data_type=DatasetDataType.text,
-                questions=[
-                    AnnotationQuestion(
-                        question_number=1,
-                        question="TEST QUESTION - Sentiment",
-                        question_id=str(uuid.uuid4()),
-                        question_type=QuestionType.radio,
-                        required=True,
-                        options=[
-                            Option(option_name="Positive"),
-                            Option(option_name="Negative"),
-                            Option(option_name="Neutral"),
-                        ],
-                    ),
-                ],
-            ),
+            template_name=f"SDK_Test_Text_Template_{timestamp}",
+            data_type=DatasetDataType.text,
+            questions=[
+                AnnotationQuestion(
+                    question_number=1,
+                    question="TEST QUESTION - Sentiment",
+                    question_id=str(uuid.uuid4()),
+                    question_type=QuestionType.radio,
+                    required=True,
+                    options=[
+                        Option(option_name="Positive"),
+                        Option(option_name="Negative"),
+                        Option(option_name="Neutral"),
+                    ],
+                ),
+            ],
         )
-
-        assert template.annotation_template_id is not None
-        assert isinstance(template.annotation_template_id, str)
-
-        print(f"\n✓ Text template created: {template.annotation_template_id}")
-        print("⚠️  Note: Template cannot be auto-deleted (no SDK delete function)")

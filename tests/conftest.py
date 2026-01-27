@@ -7,6 +7,7 @@ This file provides:
 - Session-wide fixtures
 - Custom markers
 - Test environment configuration
+- Shared integration test fixtures
 """
 
 import os
@@ -39,7 +40,7 @@ def cleanup_old_reports(reports_dir: Path, days_to_keep: int = 30):
             continue
 
         # Skip non-timestamped folders (like assets, or other directories)
-        if not folder.name.replace('_', '').isdigit():
+        if not folder.name.replace("_", "").isdigit():
             continue
 
         try:
@@ -55,7 +56,9 @@ def cleanup_old_reports(reports_dir: Path, days_to_keep: int = 30):
             failed_deletions.append((folder.name, str(e)))
 
     if deleted_count > 0:
-        print(f"\n🧹 Cleaned up {deleted_count} old test report folder(s) (older than {days_to_keep} days)")
+        print(
+            f"\n🧹 Cleaned up {deleted_count} old test report folder(s) (older than {days_to_keep} days)"
+        )
 
     if failed_deletions:
         print(f"⚠️  Failed to delete {len(failed_deletions)} folder(s):")
@@ -77,7 +80,9 @@ def pytest_configure(config):
     cleanup_old_reports(reports_base_dir, days_to_keep=30)
 
     # Configure HTML report path - use static path for pytest-html to write to
-    html_option = getattr(config.option, 'htmlpath', None) or config.getoption("--html", default=None)
+    html_option = getattr(config.option, "htmlpath", None) or config.getoption(
+        "--html", default=None
+    )
 
     if html_option and html_option != "None":
         # Let pytest-html write to a static temporary path
@@ -143,7 +148,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     time.sleep(0.5)
 
     # Move HTML report from static path to timestamped location
-    if hasattr(config, '_static_html') and config._static_html:
+    if hasattr(config, "_static_html") and config._static_html:
         static_html_path = Path(config._static_html)
         if static_html_path.exists() and config._timestamped_html:
             try:
@@ -175,7 +180,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 print(f"\n⚠️  Warning: Could not move/copy HTML report: {e}")
 
     # Copy JUnit XML reports
-    if hasattr(config, '_timestamped_junit') and config._timestamped_junit:
+    if hasattr(config, "_timestamped_junit") and config._timestamped_junit:
         if Path(config._timestamped_junit).exists():
             try:
                 shutil.copy2(config._timestamped_junit, config._latest_junit)
@@ -184,19 +189,26 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 print(f"\n⚠️  Warning: Could not copy JUnit report: {e}")
 
     # Print report location summary
-    if hasattr(config, '_run_report_dir'):
+    if hasattr(config, "_run_report_dir"):
         print("\n" + "=" * 80)
         print("📊 TEST REPORTS GENERATED")
         print("=" * 80)
         print(f"  📁 Report folder: {config._run_report_dir}")
-        if hasattr(config, '_timestamped_html') and config._timestamped_html and Path(config._timestamped_html).exists():
+        if (
+            hasattr(config, "_timestamped_html")
+            and config._timestamped_html
+            and Path(config._timestamped_html).exists()
+        ):
             print(f"  📄 HTML report:   {config._timestamped_html}")
-        if hasattr(config, '_timestamped_junit') and Path(config._timestamped_junit).exists():
+        if (
+            hasattr(config, "_timestamped_junit")
+            and Path(config._timestamped_junit).exists()
+        ):
             print(f"  📄 JUnit XML:     {config._timestamped_junit}")
-        print(f"\n  🔗 Quick Access:")
-        if hasattr(config, '_latest_html'):
+        print("\n  🔗 Quick Access:")
+        if hasattr(config, "_latest_html"):
             print(f"     Latest report:  {config._latest_html}")
-        if hasattr(config, '_full_html'):
+        if hasattr(config, "_full_html"):
             print(f"     Full report:    {config._full_html}")
         print("=" * 80)
 
@@ -224,3 +236,49 @@ def pytest_collection_modifyitems(config, items):
     """
     # Sort tests to run faster ones first (optional)
     pass
+
+
+# ============================================================================
+# Shared Integration Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def integration_client():
+    """
+    Create a shared Labellerr client instance for integration tests.
+
+    This session-scoped fixture creates a single authenticated client instance
+    shared across all integration tests to avoid repeated authentication.
+
+    Requires environment variables:
+        - API_KEY: Labellerr API key
+        - API_SECRET: Labellerr API secret
+        - CLIENT_ID: Labellerr client ID
+
+    Skips:
+        Tests if credentials are not configured
+
+    Returns:
+        LabellerrClient: Authenticated client instance
+    """
+    try:
+        from labellerr.client import LabellerrClient
+    except ImportError:
+        pytest.skip("Labellerr SDK not installed")
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    client_id = os.getenv("CLIENT_ID")
+
+    if not all([api_key, api_secret, client_id]):
+        pytest.skip(
+            "Integration tests require API credentials. "
+            "Set environment variables: API_KEY, API_SECRET, CLIENT_ID"
+        )
+
+    return LabellerrClient(api_key=api_key, api_secret=api_secret, client_id=client_id)
