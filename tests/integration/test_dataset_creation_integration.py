@@ -53,6 +53,7 @@ def cleanup_datasets(integration_client):
             delete_dataset(integration_client, dataset_id)
         except Exception as e:
             import logging
+
             logging.warning(f"Failed to cleanup dataset {dataset_id}: {e}")
 
 
@@ -119,9 +120,10 @@ def get_test_images_from_env(num_images: int = 3) -> list:
         pytest.skip(f"IMG_DATASET_PATH is not a directory: {img_path}")
 
     # Find image files (jpg, jpeg, png)
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}
+    image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp"}
     image_files = [
-        f for f in img_path.iterdir()
+        f
+        for f in img_path.iterdir()
         if f.is_file() and f.suffix.lower() in image_extensions
     ]
 
@@ -129,7 +131,9 @@ def get_test_images_from_env(num_images: int = 3) -> list:
         pytest.skip(f"No image files found in IMG_DATASET_PATH: {img_path}")
 
     if len(image_files) < num_images:
-        pytest.skip(f"Not enough images in IMG_DATASET_PATH. Found {len(image_files)}, need {num_images}")
+        pytest.skip(
+            f"Not enough images in IMG_DATASET_PATH. Found {len(image_files)}, need {num_images}"
+        )
 
     # Return first num_images files
     return image_files[:num_images]
@@ -139,7 +143,9 @@ def get_test_images_from_env(num_images: int = 3) -> list:
 class TestDatasetCreationIntegration:
     """Integration tests for dataset creation"""
 
-    def test_create_dataset_from_local_folder(self, integration_client, cleanup_datasets):
+    def test_create_dataset_from_local_folder(
+        self, integration_client, cleanup_datasets
+    ):
         """
         Comprehensive test: dataset creation, all properties validation, and property types.
         Tests:
@@ -161,7 +167,9 @@ class TestDatasetCreationIntegration:
 
             # Verify files were copied
             copied_files = list(Path(tmpdir).iterdir())
-            assert len(copied_files) == 3, f"Expected 3 files, found {len(copied_files)}"
+            assert (
+                len(copied_files) == 3
+            ), f"Expected 3 files, found {len(copied_files)}"
 
             dataset_config = DatasetConfig(
                 dataset_name=f"Test Local Dataset {int(time.time())}",
@@ -186,11 +194,11 @@ class TestDatasetCreationIntegration:
 
             # Test all property accessors
             assert dataset.data_type == "image"
-            assert hasattr(dataset, 'files_count')
-            assert hasattr(dataset, 'status_code')
-            assert hasattr(dataset, 'description')
-            assert hasattr(dataset, 'created_at')
-            assert hasattr(dataset, 'created_by')
+            assert hasattr(dataset, "files_count")
+            assert hasattr(dataset, "status_code")
+            assert hasattr(dataset, "description")
+            assert hasattr(dataset, "created_at")
+            assert hasattr(dataset, "created_by")
 
             # Validate property types
             assert isinstance(dataset.dataset_id, str)
@@ -244,7 +252,9 @@ class TestDatasetCreationIntegration:
         # Clean up
         delete_dataset(integration_client, dataset.dataset_id)
 
-    def test_create_dataset_with_multimodal_indexing(self, integration_client, cleanup_datasets):
+    def test_create_dataset_with_multimodal_indexing(
+        self, integration_client, cleanup_datasets
+    ):
         """
         Comprehensive test: multimodal indexing and dataset deletion.
         Tests dataset creation with multimodal indexing, then verifies deletion works correctly.
@@ -300,7 +310,9 @@ class TestDatasetValidationIntegration:
         ]
 
         for invalid_id in invalid_ids:
-            with pytest.raises(InvalidDatasetIDError, match="Invalid dataset ID format"):
+            with pytest.raises(
+                InvalidDatasetIDError, match="Invalid dataset ID format"
+            ):
                 LabellerrDataset(integration_client, invalid_id)
 
     def test_valid_uuid_format_but_nonexistent_dataset(self, integration_client):
@@ -313,7 +325,9 @@ class TestDatasetValidationIntegration:
         nonexistent_id = "00000000-0000-0000-0000-000000000000"
 
         try:
-            with pytest.raises((InvalidDatasetError, LabellerrError, requests.exceptions.RetryError)) as exc_info:
+            with pytest.raises(
+                (InvalidDatasetError, LabellerrError, requests.exceptions.RetryError)
+            ) as exc_info:
                 LabellerrDataset(integration_client, nonexistent_id)
 
             # Verify it's not an auth error (credentials were validated upfront)
@@ -325,7 +339,15 @@ class TestDatasetValidationIntegration:
 
             # Accept any error (404, 500, retry error) as valid for nonexistent dataset
             assert any(
-                x in error_msg for x in ["not found", "dataset", "error", "500", "retry", "max retries"]
+                x in error_msg
+                for x in [
+                    "not found",
+                    "dataset",
+                    "error",
+                    "500",
+                    "retry",
+                    "max retries",
+                ]
             ), f"Expected error for nonexistent dataset, got: {exc_info.value}"
 
         except Exception as e:
@@ -334,8 +356,11 @@ class TestDatasetValidationIntegration:
 
     def test_empty_dataset_id_rejected(self, integration_client):
         """Test that empty dataset_id is rejected"""
-        with pytest.raises(InvalidDatasetIDError, match="Dataset ID cannot be None or empty"):
+        with pytest.raises(
+            InvalidDatasetIDError, match="Dataset ID cannot be None or empty"
+        ):
             LabellerrDataset(integration_client, "")
+
 
 @pytest.mark.integration
 class TestDatasetDeletionIntegration:
@@ -359,12 +384,14 @@ class TestDatasetListingIntegration:
 
     def test_list_datasets_client_scope(self, integration_client):
         """Test listing datasets with client scope"""
-        datasets = list(list_datasets(
-            client=integration_client,
-            datatype="image",
-            scope=DataSetScope.client,
-            page_size=10,
-        ))
+        datasets = list(
+            list_datasets(
+                client=integration_client,
+                datatype="image",
+                scope=DataSetScope.client,
+                page_size=10,
+            )
+        )
 
         # Should return a list (may be empty)
         assert isinstance(datasets, list)
@@ -377,12 +404,14 @@ class TestDatasetListingIntegration:
 
     def test_list_datasets_auto_pagination(self, integration_client):
         """Test listing datasets with auto-pagination (page_size=-1)"""
-        datasets = list(list_datasets(
-            client=integration_client,
-            datatype="image",
-            scope=DataSetScope.client,
-            page_size=-1,  # Auto-pagination
-        ))
+        datasets = list(
+            list_datasets(
+                client=integration_client,
+                datatype="image",
+                scope=DataSetScope.client,
+                page_size=-1,  # Auto-pagination
+            )
+        )
 
         # Should return a list
         assert isinstance(datasets, list)
@@ -392,23 +421,27 @@ class TestDatasetListingIntegration:
         data_types = ["image", "video", "document"]
 
         for data_type in data_types:
-            datasets = list(list_datasets(
-                client=integration_client,
-                datatype=data_type,
-                scope=DataSetScope.client,
-                page_size=5,
-            ))
+            datasets = list(
+                list_datasets(
+                    client=integration_client,
+                    datatype=data_type,
+                    scope=DataSetScope.client,
+                    page_size=5,
+                )
+            )
 
             assert isinstance(datasets, list)
 
     def test_list_datasets_project_scope(self, integration_client):
         """Test listing datasets with project scope"""
-        datasets = list(list_datasets(
-            client=integration_client,
-            datatype="image",
-            scope=DataSetScope.project,
-            page_size=10,
-        ))
+        datasets = list(
+            list_datasets(
+                client=integration_client,
+                datatype="image",
+                scope=DataSetScope.project,
+                page_size=10,
+            )
+        )
 
         # Should return a list (may be empty)
         assert isinstance(datasets, list)
@@ -418,7 +451,9 @@ class TestDatasetListingIntegration:
 class TestDatasetWorkflowIntegration:
     """Integration tests for complete dataset workflows"""
 
-    @pytest.mark.skip(reason="Update operations not yet implemented - placeholder for future feature")
+    @pytest.mark.skip(
+        reason="Update operations not yet implemented - placeholder for future feature"
+    )
     def test_dataset_update_operations_not_implemented(self):
         """
         Placeholder test for dataset update operations.

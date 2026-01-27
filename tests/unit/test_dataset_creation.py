@@ -5,7 +5,7 @@ This module tests the dataset creation, deletion, and listing functionality
 including validation, error handling, and edge cases.
 """
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 
 from labellerr.core.datasets import (
@@ -15,11 +15,7 @@ from labellerr.core.datasets import (
     list_datasets,
 )
 from labellerr.core.datasets.base import LabellerrDataset, LabellerrDatasetMeta
-from labellerr.core.exceptions import (
-    LabellerrError,
-    InvalidDatasetIDError,
-    InvalidDatasetError,
-)
+from labellerr.core.exceptions import LabellerrError, InvalidDatasetIDError
 from labellerr.core.schemas import DatasetConfig, DataSetScope
 
 
@@ -35,13 +31,19 @@ class TestDatasetCreation:
         )
 
         mock_response = {
-            "response": {"dataset_id": "550e8400-e29b-41d4-a716-446655440000", "data_type": "image"}
+            "response": {
+                "dataset_id": "550e8400-e29b-41d4-a716-446655440000",
+                "data_type": "image",
+            }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
             with patch(
                 "labellerr.core.datasets.base.LabellerrDatasetMeta.get_dataset",
-                return_value={"dataset_id": "550e8400-e29b-41d4-a716-446655440000", "data_type": "image"},
+                return_value={
+                    "dataset_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "data_type": "image",
+                },
             ):
                 dataset = create_dataset_from_connection(
                     client=client,
@@ -67,13 +69,19 @@ class TestDatasetCreation:
         mock_connection.connection_id = "test-connection-id"
 
         mock_response = {
-            "response": {"dataset_id": "550e8400-e29b-41d4-a716-446655440001", "data_type": "video"}
+            "response": {
+                "dataset_id": "550e8400-e29b-41d4-a716-446655440001",
+                "data_type": "video",
+            }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
             with patch(
                 "labellerr.core.datasets.base.LabellerrDatasetMeta.get_dataset",
-                return_value={"dataset_id": "550e8400-e29b-41d4-a716-446655440001", "data_type": "video"},
+                return_value={
+                    "dataset_id": "550e8400-e29b-41d4-a716-446655440001",
+                    "data_type": "video",
+                },
             ):
                 dataset = create_dataset_from_connection(
                     client=client,
@@ -93,8 +101,12 @@ class TestDatasetCreation:
 
         files_to_upload = ["/path/to/file1.jpg", "/path/to/file2.jpg"]
 
-        with patch("labellerr.core.datasets.upload_files", return_value="local-connection-id"):
-            with patch("labellerr.core.datasets.create_dataset_from_connection") as mock_create:
+        with patch(
+            "labellerr.core.datasets.upload_files", return_value="local-connection-id"
+        ):
+            with patch(
+                "labellerr.core.datasets.create_dataset_from_connection"
+            ) as mock_create:
                 mock_dataset = Mock()
                 mock_dataset.dataset_id = "test-dataset-id"
                 mock_create.return_value = mock_dataset
@@ -119,9 +131,11 @@ class TestDatasetCreation:
 
         with patch(
             "labellerr.core.datasets.upload_folder_files_to_dataset",
-            return_value={"connection_id": "folder-connection-id", "status": "success"}
+            return_value={"connection_id": "folder-connection-id", "status": "success"},
         ):
-            with patch("labellerr.core.datasets.create_dataset_from_connection") as mock_create:
+            with patch(
+                "labellerr.core.datasets.create_dataset_from_connection"
+            ) as mock_create:
                 mock_dataset = Mock()
                 mock_dataset.dataset_id = "test-dataset-id"
                 mock_create.return_value = mock_dataset
@@ -141,7 +155,9 @@ class TestDatasetCreation:
             data_type="image",
         )
 
-        with pytest.raises(LabellerrError, match="No files or folder to upload provided"):
+        with pytest.raises(
+            LabellerrError, match="No files or folder to upload provided"
+        ):
             create_dataset_from_local(
                 client=client,
                 dataset_config=dataset_config,
@@ -159,12 +175,14 @@ class TestDatasetCreation:
             "response": {"dataset_id": "test-dataset-id", "data_type": "image"}
         }
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
             with patch(
                 "labellerr.core.datasets.base.LabellerrDatasetMeta.get_dataset",
                 return_value={"dataset_id": "test-dataset-id", "data_type": "image"},
             ):
-                dataset = create_dataset_from_connection(
+                create_dataset_from_connection(
                     client=client,
                     dataset_config=dataset_config,
                     connection="test-connection",
@@ -175,6 +193,7 @@ class TestDatasetCreation:
                 call_args = mock_request.call_args
                 assert "data" in call_args.kwargs
                 import json
+
                 payload = json.loads(call_args.kwargs["data"])
                 assert payload["es_multimodal_index"] is True
 
@@ -187,9 +206,7 @@ class TestDatasetDeletion:
         """Test successful dataset deletion"""
         dataset_id = "550e8400-e29b-41d4-a716-446655440000"
 
-        mock_response = {
-            "response": {"status": "deleted", "dataset_id": dataset_id}
-        }
+        mock_response = {"response": {"status": "deleted", "dataset_id": dataset_id}}
 
         with patch.object(client, "make_request", return_value=mock_response):
             result = delete_dataset(client, dataset_id)
@@ -203,7 +220,9 @@ class TestDatasetDeletion:
 
         # The deletion function doesn't validate UUID format before making request
         # So it will make the API call which should fail
-        with patch.object(client, "make_request", side_effect=LabellerrError("Invalid dataset ID")):
+        with patch.object(
+            client, "make_request", side_effect=LabellerrError("Invalid dataset ID")
+        ):
             with pytest.raises(LabellerrError):
                 delete_dataset(client, invalid_id)
 
@@ -211,7 +230,9 @@ class TestDatasetDeletion:
         """Test deletion of non-existent dataset"""
         dataset_id = "00000000-0000-0000-0000-000000000000"
 
-        with patch.object(client, "make_request", side_effect=LabellerrError("Dataset not found")):
+        with patch.object(
+            client, "make_request", side_effect=LabellerrError("Dataset not found")
+        ):
             with pytest.raises(LabellerrError, match="Dataset not found"):
                 delete_dataset(client, dataset_id)
 
@@ -233,12 +254,14 @@ class TestDatasetListing:
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
-            datasets = list(list_datasets(
-                client=client,
-                datatype="image",
-                scope=DataSetScope.client,
-                page_size=10,
-            ))
+            datasets = list(
+                list_datasets(
+                    client=client,
+                    datatype="image",
+                    scope=DataSetScope.client,
+                    page_size=10,
+                )
+            )
 
             assert len(datasets) == 2
             assert datasets[0]["dataset_id"] == "id1"
@@ -263,12 +286,14 @@ class TestDatasetListing:
         ]
 
         with patch.object(client, "make_request", side_effect=mock_responses):
-            datasets = list(list_datasets(
-                client=client,
-                datatype="image",
-                scope=DataSetScope.client,
-                page_size=-1,  # Auto-pagination
-            ))
+            datasets = list(
+                list_datasets(
+                    client=client,
+                    datatype="image",
+                    scope=DataSetScope.client,
+                    page_size=-1,  # Auto-pagination
+                )
+            )
 
             assert len(datasets) == 15
             assert datasets[0]["dataset_id"] == "id0"
@@ -284,12 +309,14 @@ class TestDatasetListing:
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
-            datasets = list(list_datasets(
-                client=client,
-                datatype="video",
-                scope="user",  # Use string instead of enum
-                page_size=10,
-            ))
+            datasets = list(
+                list_datasets(
+                    client=client,
+                    datatype="video",
+                    scope="user",  # Use string instead of enum
+                    page_size=10,
+                )
+            )
 
             assert len(datasets) == 0
 
@@ -306,19 +333,25 @@ class TestDatasetListing:
             }
         }
 
-        with patch.object(client, "make_request", return_value=mock_response) as mock_request:
-            datasets = list(list_datasets(
-                client=client,
-                datatype="document",
-                scope=DataSetScope.client,
-                page_size=10,
-                last_dataset_id="id10",
-            ))
+        with patch.object(
+            client, "make_request", return_value=mock_response
+        ) as mock_request:
+            datasets = list(
+                list_datasets(
+                    client=client,
+                    datatype="document",
+                    scope=DataSetScope.client,
+                    page_size=10,
+                    last_dataset_id="id10",
+                )
+            )
 
             assert len(datasets) == 2
             # Verify last_dataset_id was included in URL
             call_args = mock_request.call_args
-            assert "last_dataset_id=id10" in call_args[0][1]  # URL is second positional arg
+            assert (
+                "last_dataset_id=id10" in call_args[0][1]
+            )  # URL is second positional arg
 
 
 @pytest.mark.unit
@@ -327,7 +360,9 @@ class TestDatasetValidation:
 
     def test_empty_dataset_id(self, client):
         """Test that empty dataset_id is rejected"""
-        with pytest.raises(InvalidDatasetIDError, match="Dataset ID cannot be None or empty"):
+        with pytest.raises(
+            InvalidDatasetIDError, match="Dataset ID cannot be None or empty"
+        ):
             LabellerrDatasetMeta.get_dataset(client, "")
 
     def test_none_dataset_id(self, client):
