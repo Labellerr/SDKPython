@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: prod
 
     env:
       API_KEY: ${{ secrets.API_KEY }}
@@ -20,6 +21,13 @@ jobs:
       GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
       GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
       LABELLERR_TEST_DATA_PATH: ${{ github.workspace }}/tests/fixtures/mcp_images
+      IMAGE_DATASET_ID: ${{ vars.IMAGE_DATASET_ID }}
+      AUDIO_MP3_DATASET_ID: ${{ vars.AUDIO_MP3_DATASET_ID }}
+      AUDIO_WAV_DATASET_ID: ${{ vars.AUDIO_WAV_DATASET_ID }}
+      VIDEO_DATASET_ID: ${{ vars.VIDEO_DATASET_ID }}
+      DOCUMENT_DATASET_ID: ${{ vars.DOCUMENT_DATASET_ID }}
+      TEXT_DATASET_ID: ${{ vars.TEXT_DATASET_ID }}
+
 
     steps:
       - name: Checkout
