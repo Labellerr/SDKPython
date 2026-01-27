@@ -48,7 +48,9 @@ def cleanup_templates():
 
     # Note: Cleanup not possible yet - template deletion API not implemented
     if templates_to_cleanup:
-        print(f"\n⚠ Template deletion not yet implemented - {len(templates_to_cleanup)} template(s) remain in system")
+        print(
+            f"\n⚠ Template deletion not yet implemented - {len(templates_to_cleanup)} template(s) remain in system"
+        )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -104,7 +106,9 @@ def integration_client():
 class TestTemplateCreationIntegration:
     """Integration tests for template creation with real API calls"""
 
-    def test_create_template_single_bbox_question(self, integration_client, cleanup_templates):
+    def test_create_template_single_bbox_question(
+        self, integration_client, cleanup_templates
+    ):
         """
         Test creating a template with a single bounding box question.
         Verifies template creation with geometric annotation type.
@@ -134,7 +138,9 @@ class TestTemplateCreationIntegration:
 
         print(f"\n✓ Created template: {template.annotation_template_id}")
 
-    def test_create_template_multiple_questions(self, integration_client, cleanup_templates):
+    def test_create_template_multiple_questions(
+        self, integration_client, cleanup_templates
+    ):
         """
         Test creating a template with multiple questions of different types.
         Verifies:
@@ -182,7 +188,9 @@ class TestTemplateCreationIntegration:
         assert template.annotation_template_id is not None
         print(f"\n✓ Created multi-question template: {template.annotation_template_id}")
 
-    def test_create_template_all_geometric_types(self, integration_client, cleanup_templates):
+    def test_create_template_all_geometric_types(
+        self, integration_client, cleanup_templates
+    ):
         """
         Test creating a template with ALL geometric question types in one template.
         Tests: bounding_box, polygon, polyline, dot
@@ -231,7 +239,9 @@ class TestTemplateCreationIntegration:
             f"\n✓ Created template with all geometric types: {template.annotation_template_id}"
         )
 
-    def test_create_template_all_choice_and_input_types(self, integration_client, cleanup_templates):
+    def test_create_template_all_choice_and_input_types(
+        self, integration_client, cleanup_templates
+    ):
         """
         Test creating a template with ALL choice and input question types.
         Tests: radio, boolean, select, dropdown, input
@@ -294,7 +304,9 @@ class TestTemplateCreationIntegration:
             f"\n✓ Created template with all choice and input types: {template.annotation_template_id}"
         )
 
-    def test_list_templates_and_all_data_types(self, integration_client, cleanup_templates):
+    def test_list_templates_and_all_data_types(
+        self, integration_client, cleanup_templates
+    ):
         """
         Test listing templates for all data types and verify list functionality.
         Creates one template for video data type, then lists all data types.
@@ -450,7 +462,9 @@ class TestTemplateValidationIntegration:
 class TestTemplatePropertiesIntegration:
     """Integration tests for template properties and operations"""
 
-    @pytest.mark.skip(reason="Template update/delete operations not yet implemented - placeholder for future feature")
+    @pytest.mark.skip(
+        reason="Template update/delete operations not yet implemented - placeholder for future feature"
+    )
     def test_template_update_operations_not_implemented(self):
         """
         Placeholder test for template update operations.
