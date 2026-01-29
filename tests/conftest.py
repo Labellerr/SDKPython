@@ -346,6 +346,74 @@ def handle_auth_errors(func):
     return wrapper
 
 
+# ============================================================================
+# Mock Fixtures for Unit Tests
+# ============================================================================
+
+
+@pytest.fixture
+def client():
+    """
+    Mock LabellerrClient for unit tests.
+    
+    This fixture provides a mocked client instance that doesn't make real API calls.
+    Unit tests should use this instead of integration_client.
+    """
+    from unittest.mock import Mock, MagicMock
+    from labellerr.client import LabellerrClient
+    
+    mock_client = Mock(spec=LabellerrClient)
+    mock_client.api_key = "test_api_key"
+    mock_client.api_secret = "test_api_secret"
+    mock_client.client_id = "test_client_id"
+    mock_client.base_url = "https://api.labellerr.com"
+    mock_client._session = MagicMock()
+    mock_client.make_request = Mock()
+    
+    return mock_client
+
+
+@pytest.fixture
+def project(client):
+    """
+    Real LabellerrProject instance with mocked client for unit tests.
+    
+    This provides a real project instance that uses a mocked client,
+    so tests can verify the project logic without making API calls.
+    """
+    from labellerr.core.projects.image_project import ImageProject
+    
+    # Mock project data that would normally come from API
+    project_data = {
+        "project_id": "test_project_id_12345",
+        "project_name": "Test Project",
+        "data_type": "image",
+        "status_code": 200,
+        "annotation_template_id": "test_template_id",
+        "created_by": "test@example.com",
+        "created_at": "2024-01-01T00:00:00Z",
+        "attached_datasets": []
+    }
+    
+    # Mock the client.make_request to return proper project data when called
+    # This is needed because LabellerrProject factory calls get_project during init
+    client.make_request.return_value = {"response": project_data}
+    
+    # Use ImageProject directly to bypass the factory pattern
+    # ImageProject is a concrete implementation that doesn't trigger factory lookup
+    project_instance = ImageProject.__new__(ImageProject)
+    project_instance.client = client
+    project_instance._LabellerrProject__project_id_input = "test_project_id_12345"
+    project_instance._LabellerrProject__project_data = project_data
+    
+    return project_instance
+
+
+# ============================================================================
+# Integration Test Fixtures
+# ============================================================================
+
+
 @pytest.fixture(scope="session")
 def api_credentials():
     """
