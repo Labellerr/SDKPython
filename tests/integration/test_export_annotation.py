@@ -15,9 +15,15 @@ create or clean up projects/exports.
 """
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+
+# Add tests directory to path to import conftest helpers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import skip_if_missing_env_vars, skip_if_auth_failed
 
 from labellerr.client import LabellerrClient
 from labellerr.core.projects import LabellerrProject
@@ -25,14 +31,9 @@ from labellerr.core.schemas import CreateExportParams, ExportDestination
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-CLIENT_ID = os.getenv("CLIENT_ID")
-PROJECT_ID = os.getenv("PROJECT_ID")
-
 
 @pytest.fixture
-def export_annotation_fixture():
+def export_annotation_fixture(integration_client):
     """
     Fixture that creates a local export and returns the export ID.
 
@@ -49,12 +50,8 @@ def export_annotation_fixture():
     Raises:
         pytest.skip: If required environment variables are not set
     """
-    # Initialize the client with your API credentials
-    client = LabellerrClient(
-        api_key=API_KEY, api_secret=API_SECRET, client_id=CLIENT_ID
-    )
-
-    project_id = PROJECT_ID
+    # Check for PROJECT_ID (credentials already checked by integration_client fixture)
+    skip_if_missing_env_vars("PROJECT_ID")
 
     export_config = CreateExportParams(
         export_name="Weekly Export",
@@ -70,15 +67,12 @@ def export_annotation_fixture():
         export_destination=ExportDestination.LOCAL,
     )
 
-    # Get project instance
-    project = LabellerrProject(client=client, project_id=project_id)
-
-    # Create export
-    export = project.create_export(export_config)
-    export_id = export.report_id
-    # print(f"Local export created successfully. Export ID: {export_id}")
-
-    return export_id
+    try:
+        project = LabellerrProject(client=integration_client, project_id=os.getenv("PROJECT_ID"))
+        export = project.create_export(export_config)
+        return export.report_id
+    except Exception as e:
+        skip_if_auth_failed(e)
 
 
 @pytest.mark.integration

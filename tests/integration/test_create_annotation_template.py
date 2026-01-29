@@ -13,14 +13,18 @@ provide a delete_template() function. Templates will accumulate with each test r
 Manual cleanup may be required periodically via the Labellerr UI.
 """
 
-import logging
 import time
 import uuid
+import sys
+from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
-from labellerr.client import LabellerrClient
+# Add tests directory to path to import conftest helpers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import skip_if_auth_failed
+
 from labellerr.core.annotation_templates import create_template
 from labellerr.core.schemas import DatasetDataType
 from labellerr.core.schemas.annotation_templates import (
@@ -32,36 +36,34 @@ from labellerr.core.schemas.annotation_templates import (
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-CLIENT_ID = os.getenv("CLIENT_ID")
 
-
-@pytest.fixture(scope="session")
-def integration_client():
+def _create_and_validate_template(client, template_name, data_type, questions):
     """
-    Create a client instance for integration tests.
-
-    This is a session-scoped fixture that creates a single client instance
-    shared across all tests in this module to avoid repeated authentication.
-
-    Requires environment variables:
-        - API_KEY: Labellerr API key
-        - API_SECRET: Labellerr API secret
-        - CLIENT_ID: Labellerr client ID
-
-    Skips tests if credentials are not configured.
+    Helper function to create and validate a template.
+    
+    Args:
+        client: LabellerrClient instance
+        template_name: Name for the template
+        data_type: DatasetDataType enum value
+        questions: List of AnnotationQuestion objects
+        
+    Returns:
+        Template object with annotation_template_id
     """
-    API_KEY = os.getenv("API_KEY")
-    API_SECRET = os.getenv("API_SECRET")
-    CLIENT_ID = os.getenv("CLIENT_ID")
-
-    if not all([API_KEY, API_SECRET, CLIENT_ID]):
-        pytest.skip(
-            "Missing required environment variables: API_KEY, API_SECRET, CLIENT_ID"
-        )
-
-    return LabellerrClient(api_key=API_KEY, api_secret=API_SECRET, client_id=CLIENT_ID)
+    params = CreateTemplateParams(
+        template_name=template_name,
+        data_type=data_type,
+        questions=questions
+    )
+    
+    try:
+        template = create_template(client, params)
+        assert template is not None
+        assert template.annotation_template_id is not None
+        assert isinstance(template.annotation_template_id, str)
+        return template
+    except Exception as e:
+        skip_if_auth_failed(e)
 
 
 @pytest.mark.integration
