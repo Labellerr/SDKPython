@@ -246,14 +246,14 @@ def pytest_collection_modifyitems(config, items):
 def check_required_env_vars(*var_names, warn=True):
     """
     Check if required environment variables are set.
-    
+
     Args:
         *var_names: Variable number of environment variable names to check
         warn: If True, prints a warning message with missing variables
-        
+
     Returns:
         tuple: (all_present: bool, missing_vars: list)
-        
+
     Example:
         all_present, missing = check_required_env_vars("API_KEY", "API_SECRET", "CLIENT_ID")
         if not all_present:
@@ -261,13 +261,16 @@ def check_required_env_vars(*var_names, warn=True):
     """
     missing_vars = [var for var in var_names if not os.getenv(var)]
     all_present = len(missing_vars) == 0
-    
+
     if not all_present and warn:
-        print("\n⚠️  WARNING: Missing required environment variables: " + ", ".join(missing_vars))
+        print(
+            "\n⚠️  WARNING: Missing required environment variables: "
+            + ", ".join(missing_vars)
+        )
         print("   Please set these variables to run the tests:")
         for var in missing_vars:
             print("   - " + var)
-    
+
     return all_present, missing_vars
 
 
@@ -275,28 +278,26 @@ def skip_if_missing_env_vars(*var_names):
     """
     Skip test if any required environment variables are missing.
     Prints warning with missing variable names.
-    
+
     Args:
         *var_names: Variable number of environment variable names to check
-        
+
     Raises:
         pytest.skip: If any variables are missing
     """
     all_present, missing = check_required_env_vars(*var_names, warn=True)
     if not all_present:
-        pytest.skip(
-            f"Missing required environment variables: {', '.join(missing)}"
-        )
+        pytest.skip(f"Missing required environment variables: {', '.join(missing)}")
 
 
 def skip_if_auth_failed(exception):
     """
     Check if exception is an authentication error and skip test if so.
     Otherwise, re-raises the exception.
-    
+
     Args:
         exception: The exception to check
-        
+
     Raises:
         pytest.skip: If authentication error detected
         Exception: Re-raises the original exception if not auth-related
@@ -304,17 +305,21 @@ def skip_if_auth_failed(exception):
     error_str = str(exception).lower()
     auth_indicators = [
         "not authorized",
-        "unauthorized", 
+        "unauthorized",
         "invalid api key",
         "invalid api",
         "403",
-        "401"
+        "401",
     ]
-    
+
     if any(indicator in error_str for indicator in auth_indicators):
-        print(f"\n⚠️  WARNING: Authentication failed - Invalid or expired API credentials")
-        pytest.skip(f"Authentication failed - Invalid or expired credentials: {exception}")
-    
+        print(
+            "\n⚠️  WARNING: Authentication failed - Invalid or expired API credentials"
+        )
+        pytest.skip(
+            "Authentication failed - Invalid or expired credentials: " + str(exception)
+        )
+
     # Not an auth error, re-raise
     raise exception
 
@@ -323,21 +328,21 @@ def handle_auth_errors(func):
     """
     Decorator to automatically handle authentication errors in test functions.
     Skips test if authentication fails instead of failing it.
-    
+
     Usage:
         @handle_auth_errors
         def test_something(client):
             # test code that might raise auth errors
     """
     import functools
-    
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
             skip_if_auth_failed(e)
-    
+
     return wrapper
 
 
@@ -345,22 +350,23 @@ def handle_auth_errors(func):
 def api_credentials():
     """
     Load and validate API credentials from environment.
-    
+
     Returns:
         dict: Dictionary with api_key, api_secret, client_id
-        
+
     Skips:
         If credentials are missing
     """
     from dotenv import load_dotenv
+
     load_dotenv()
-    
+
     skip_if_missing_env_vars("API_KEY", "API_SECRET", "CLIENT_ID")
-    
+
     return {
         "api_key": os.getenv("API_KEY"),
         "api_secret": os.getenv("API_SECRET"),
-        "client_id": os.getenv("CLIENT_ID")
+        "client_id": os.getenv("CLIENT_ID"),
     }
 
 
@@ -392,8 +398,10 @@ def integration_client(api_credentials):
         client = LabellerrClient(
             api_key=api_credentials["api_key"],
             api_secret=api_credentials["api_secret"],
-            client_id=api_credentials["client_id"]
+            client_id=api_credentials["client_id"],
         )
         return client
     except Exception as e:
         skip_if_auth_failed(e)
+        # This line won't be reached but satisfies linter
+        return None

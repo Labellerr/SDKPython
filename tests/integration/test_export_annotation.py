@@ -25,7 +25,6 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import skip_if_missing_env_vars, skip_if_auth_failed
 
-from labellerr.client import LabellerrClient
 from labellerr.core.projects import LabellerrProject
 from labellerr.core.schemas import CreateExportParams, ExportDestination
 
@@ -68,7 +67,9 @@ def export_annotation_fixture(integration_client):
     )
 
     try:
-        project = LabellerrProject(client=integration_client, project_id=os.getenv("PROJECT_ID"))
+        project = LabellerrProject(
+            client=integration_client, project_id=os.getenv("PROJECT_ID")
+        )
         export = project.create_export(export_config)
         return export.report_id
     except Exception as e:

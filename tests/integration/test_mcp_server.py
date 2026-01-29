@@ -73,7 +73,7 @@ def sdk_client(api_credentials):
 
 
 @pytest.fixture(scope="session")
-def test_dataset_id(sdk_client):
+def test_dataset_id(sdk_client, api_credentials):
     """Create a test dataset and return its ID"""
     test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
@@ -85,7 +85,7 @@ def test_dataset_id(sdk_client):
     upload_result = upload_folder_files_to_dataset(
         sdk_client,
         {
-            "client_id": credentials["client_id"],
+            "client_id": api_credentials["client_id"],
             "folder_path": test_data_path,
             "data_type": "image",
         },

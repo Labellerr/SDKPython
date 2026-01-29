@@ -42,7 +42,7 @@ import pytest
 from dotenv import load_dotenv
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from labellerr.client import LabellerrClient
 from labellerr.core.datasets import (
@@ -144,7 +144,7 @@ def cleanup_datasets(integration_client):
                     print(
                         f"\n⚠️  Could not check dataset status for {dataset_id}: {status_error}"
                     )
-                    print(f"   Attempting deletion anyway...")
+                    print("   Attempting deletion anyway...")
 
                 # Delete dataset
                 try:
@@ -238,7 +238,7 @@ class TestCreateDatasetIntegration:
             )
 
         # Get only first 3 image files for faster testing
-        image_files = get_first_n_files(
+        image_files = _get_first_n_files(
             IMAGE_DATASET_PATH,
             n=3,
             extensions=(".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff"),
@@ -259,7 +259,7 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
-        created_new = True
+        created_new = True  # noqa: F841
 
         # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
@@ -322,7 +322,7 @@ class TestCreateDatasetIntegration:
             )
 
         # Get only first 3 video files for faster testing
-        video_files = get_first_n_files(
+        video_files = _get_first_n_files(
             VIDEO_DATASET_PATH,
             n=3,
             extensions=(".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"),
@@ -343,7 +343,7 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
-        created_new = True
+        created_new = True  # noqa: F841
 
         # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
@@ -436,7 +436,7 @@ class TestCreateDatasetIntegration:
             )
 
         # Get only first 3 audio files for faster testing
-        audio_files = get_first_n_files(
+        audio_files = _get_first_n_files(
             AUDIO_DATASET_PATH,
             n=3,
             extensions=(".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"),
@@ -457,7 +457,7 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
-        created_new = True
+        created_new = True  # noqa: F841
 
         # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
@@ -520,7 +520,7 @@ class TestCreateDatasetIntegration:
             )
 
         # Get only first 3 document files for faster testing
-        document_files = get_first_n_files(
+        document_files = _get_first_n_files(
             DOCUMENT_DATASET_PATH, n=3, extensions=(".pdf", ".doc", ".docx", ".txt")
         )
 
@@ -540,7 +540,7 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
-        created_new = True
+        created_new = True  # noqa: F841
 
         # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)
@@ -603,7 +603,7 @@ class TestCreateDatasetIntegration:
             )
 
         # Get only first 3 text files for faster testing
-        text_files = get_first_n_files(
+        text_files = _get_first_n_files(
             TEXT_DATASET_PATH, n=3, extensions=(".txt", ".csv", ".json", ".xml")
         )
 
@@ -622,7 +622,7 @@ class TestCreateDatasetIntegration:
         )
 
         assert dataset.dataset_id is not None
-        created_new = True
+        created_new = True  # noqa: F841
 
         # Register for cleanup (only if we created it)
         cleanup_datasets(dataset.dataset_id)

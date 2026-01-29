@@ -675,7 +675,7 @@ def cleanup_projects(integration_client):
 
                 delete_project(integration_client, project)
                 break  # Success - exit retry loop
-            except Exception as e:
+            except Exception:
                 if attempt < max_retries - 1:
                     # Not the last attempt, wait and retry
                     time.sleep(retry_delay)
@@ -716,38 +716,18 @@ def wait_for_project_ready(
     Returns:
         True if project is ready, False if timed out
     """
+    import time
+
     for _ in range(max_wait_seconds):
         try:
-            project = LabellerrProject(integration_client, project_id=project_id)
-            delete_project(integration_client, project)
-            logger.info(f" Deleted project: {project_id}")
-        except Exception as e:
-            error_str = str(e)
-            # Treat "already marked for deletion" as success, not failure
-            if "already marked for deletion" in error_str.lower():
-                logger.info(f" Project already marked for deletion: {project_id}")
-            else:
-                failed_cleanups.append((project_id, error_str))
-                logger.error(f" Failed to delete project {project_id}: {e}")
+            status_data = project.status()
+            if status_data.get("status_code", 500) != 100:  # Not "In Progress"
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
 
-    # Cleanup summary and fail if any deletions failed
-    print("\n" + "=" * 80)
-    print("🧹 PROJECT CLEANUP SUMMARY")
-    print("=" * 80)
-    print(f"  Total created: {len(projects_to_cleanup)}")
-    print(f"  ✓ Deleted: {len(projects_to_cleanup) - len(failed_cleanups)}")
-    print(f"  ✗ Failed: {len(failed_cleanups)}")
-    if failed_cleanups:
-        print("\n  Failed project IDs (delete manually):")
-        for project_id, error in failed_cleanups:
-            print(f"    - {project_id}: {error}")
-    print("=" * 80)
-
-    # Fail the test if any cleanup failed
-    if failed_cleanups:
-        pytest.fail(
-            f"Cleanup failed for {len(failed_cleanups)} project(s). See summary above."
-        )
+    return False
 
 
 def wait_until_project_ready(project: LabellerrProject) -> None:

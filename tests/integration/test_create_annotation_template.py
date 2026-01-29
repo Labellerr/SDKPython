@@ -40,22 +40,20 @@ load_dotenv()
 def _create_and_validate_template(client, template_name, data_type, questions):
     """
     Helper function to create and validate a template.
-    
+
     Args:
         client: LabellerrClient instance
         template_name: Name for the template
         data_type: DatasetDataType enum value
         questions: List of AnnotationQuestion objects
-        
+
     Returns:
         Template object with annotation_template_id
     """
     params = CreateTemplateParams(
-        template_name=template_name,
-        data_type=data_type,
-        questions=questions
+        template_name=template_name, data_type=data_type, questions=questions
     )
-    
+
     try:
         template = create_template(client, params)
         assert template is not None
