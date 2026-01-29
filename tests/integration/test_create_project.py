@@ -651,6 +651,72 @@ def cleanup_projects(integration_client):
 
     failed_cleanups = []
     for project_id in projects_to_cleanup:
+        max_retries = 5  # Increased from 3 to 5 for better cleanup success rate
+        retry_delay = 3  # Increased from 2 to 3 seconds to give backend more time
+
+        for attempt in range(max_retries):
+            try:
+                # Create a simple project object with just the ID for deletion
+                project = LabellerrProject(integration_client, project_id=project_id)
+
+                # Wait for project to finish processing before deletion
+                # Projects cannot be deleted while status is "In Progress"
+                try:
+                    status_data = project.status()
+                    status_code = status_data.get("status_code", 500)
+                    if status_code != 300:
+                        print(
+                            f"\n⚠ Project {project_id} completed with status code {status_code}, attempting cleanup anyway..."
+                        )
+                except Exception as status_error:
+                    print(
+                        f"\n⚠ Could not check project status: {status_error}, attempting cleanup anyway..."
+                    )
+
+                delete_project(integration_client, project)
+                break  # Success - exit retry loop
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Not the last attempt, wait and retry
+                    time.sleep(retry_delay)
+                else:
+                    # Last attempt failed
+                    failed_cleanups.append(project_id)
+
+    # Report detailed cleanup summary
+    print("\n" + "=" * 80)
+    print("CLEANUP SUMMARY")
+    print("=" * 80)
+    print(f"  Total projects created:       {len(projects_to_cleanup)}")
+    print(
+        f"  Successfully deleted:         {len(projects_to_cleanup) - len(failed_cleanups)}"
+    )
+    print(f"  Failed to delete:             {len(failed_cleanups)}")
+    print("=" * 80)
+
+    if failed_cleanups:
+        print(f"\n⚠ WARNING: {len(failed_cleanups)} project(s) failed to cleanup:")
+        for project_id in failed_cleanups:
+            print(f"   - {project_id}")
+        print("\n💡 These projects may need manual deletion.")
+        print("   Run: python tests/integration/cleanup_test_projects.py")
+        print("=" * 80)
+
+
+def wait_for_project_ready(
+    project: LabellerrProject, max_wait_seconds: int = 30
+) -> bool:
+    """
+    Wait for project to finish processing before operations like deletion.
+
+    Args:
+        project: The project to wait for
+        max_wait_seconds: Maximum time to wait in seconds (default: 30)
+
+    Returns:
+        True if project is ready, False if timed out
+    """
+    for _ in range(max_wait_seconds):
         try:
             project = LabellerrProject(integration_client, project_id=project_id)
             delete_project(integration_client, project)

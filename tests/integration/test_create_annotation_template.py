@@ -32,41 +32,36 @@ from labellerr.core.schemas.annotation_templates import (
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-
-# integration_client fixture is now shared in tests/conftest.py
-
-
-# ============================================================================
-# Internal Helper Functions
-# ============================================================================
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+CLIENT_ID = os.getenv("CLIENT_ID")
 
 
-def _create_and_validate_template(
-    client: LabellerrClient,
-    template_name: str,
-    data_type: DatasetDataType,
-    questions: list,
-):
-    """Create an annotation template and validate it was created successfully."""
-    template = create_template(
-        client=client,
-        params=CreateTemplateParams(
-            template_name=template_name,
-            data_type=data_type,
-            questions=questions,
-        ),
-    )
+@pytest.fixture(scope="session")
+def integration_client():
+    """
+    Create a client instance for integration tests.
 
-    assert template.annotation_template_id is not None
-    assert isinstance(template.annotation_template_id, str)
+    This is a session-scoped fixture that creates a single client instance
+    shared across all tests in this module to avoid repeated authentication.
 
-    logger.info(
-        f"{data_type.value.capitalize()} template created: {template.annotation_template_id}"
-    )
-    logger.warning("Template cannot be auto-deleted (no SDK delete function)")
+    Requires environment variables:
+        - API_KEY: Labellerr API key
+        - API_SECRET: Labellerr API secret
+        - CLIENT_ID: Labellerr client ID
 
-    return template
+    Skips tests if credentials are not configured.
+    """
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+    CLIENT_ID = os.getenv("CLIENT_ID")
+
+    if not all([API_KEY, API_SECRET, CLIENT_ID]):
+        pytest.skip(
+            "Missing required environment variables: API_KEY, API_SECRET, CLIENT_ID"
+        )
+
+    return LabellerrClient(api_key=API_KEY, api_secret=API_SECRET, client_id=CLIENT_ID)
 
 
 @pytest.mark.integration
