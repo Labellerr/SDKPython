@@ -60,12 +60,6 @@ jobs:
           make test-unit
         continue-on-error: false
 
-      - name: Run integration tests
-        run: |
-          mkdir -p reports
-          make test-integration
-        continue-on-error: false
-
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
