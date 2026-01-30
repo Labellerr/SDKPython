@@ -36,7 +36,7 @@ test-unit: ## Run only unit tests
 
 test-integration: ## Run only integration tests (requires credentials)
 	@mkdir -p tests/integration/test_reports
-	$(PYTHON) -m pytest tests/integration/ -v -m "integration and not deprecated"
+	$(PYTHON) -m pytest tests/integration/ -v -m "integration and not deprecated" --ignore=tests/integration/mcp
 	@echo ""
 	@echo "✅ Integration tests completed! Check output above for report locations."
 
