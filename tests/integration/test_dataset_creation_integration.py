@@ -310,11 +310,9 @@ class TestDatasetValidationIntegration:
         ]
 
         for invalid_id in invalid_ids:
-            with pytest.raises(
-                (InvalidDatasetError, LabellerrError)
-            ) as exc_info:
+            with pytest.raises((InvalidDatasetError, LabellerrError)) as exc_info:
                 LabellerrDataset(integration_client, invalid_id)
-            
+
             # Verify it's a 400 error for invalid format
             error_msg = str(exc_info.value).lower()
             assert any(
