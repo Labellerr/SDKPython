@@ -193,6 +193,10 @@ class LabellerrClient:
                 headers.update(kwargs["headers"])
             kwargs["headers"] = headers
 
+        # Set default timeout if not provided
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = 30  # 30 second default timeout
+
         # Make the request
         if self._session:
             response = self._session.request(method, url, **kwargs)

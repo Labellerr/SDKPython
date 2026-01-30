@@ -77,11 +77,12 @@ def create_project(
     return LabellerrProject(client, project_id=response["response"]["project_id"])
 
 
-def list_projects(client: "LabellerrClient"):
+def list_projects(client: "LabellerrClient", page_size: int = None):
     """
     Retrieves a list of projects associated with a client ID.
 
     :param client: The client instance.
+    :param page_size: Optional limit on number of projects to return (default: None = all projects).
     :return: A list of LabellerrProject objects.
     """
     unique_id = str(uuid.uuid4())
@@ -93,6 +94,11 @@ def list_projects(client: "LabellerrClient"):
         extra_headers={"content-type": "application/json"},
         request_id=unique_id,
     )
+
+    # Limit the number of projects if page_size is specified
+    projects_data = response["response"]
+    if page_size is not None and page_size > 0:
+        projects_data = projects_data[:page_size]
 
     def _instantiate_project(project_data):
         try:
@@ -106,7 +112,7 @@ def list_projects(client: "LabellerrClient"):
     with ThreadPoolExecutor(max_workers=10) as executor:
         projects = [
             p
-            for p in executor.map(_instantiate_project, response["response"])
+            for p in executor.map(_instantiate_project, projects_data)
             if p is not None
         ]
 

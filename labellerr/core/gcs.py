@@ -6,6 +6,12 @@ from .exceptions import LabellerrError
 
 CONTENT_TYPE = "application/octet-stream"
 
+# Timeout settings for GCS uploads (in seconds)
+# Connect timeout: time to establish connection
+# Read timeout: time to wait for response
+GCS_CONNECT_TIMEOUT = 30
+GCS_READ_TIMEOUT = 300  # 5 minutes for large file uploads
+
 
 def _handle_gcs_response(response, operation_name="GCS operation"):
     """
@@ -44,7 +50,12 @@ def upload_to_gcs_direct(signed_url, file_path, chunk_size=8192):
 
     # Use streaming upload to minimize memory usage
     with open(file_path, "rb") as f:
-        upload_response = requests.put(signed_url, headers=headers, data=f)
+        upload_response = requests.put(
+            signed_url,
+            headers=headers,
+            data=f,
+            timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
+        )
 
     _handle_gcs_response(upload_response, "direct upload")
     return True
@@ -65,7 +76,9 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
         "Content-Type": CONTENT_TYPE,
         "Content-Length": "0",
     }
-    response = requests.post(signed_url, headers=headers)
+    response = requests.post(
+        signed_url, headers=headers, timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT)
+    )
     _handle_gcs_response(response, "resumable_start")
     upload_url = response.headers["Location"]
 
@@ -78,7 +91,12 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
                 "Content-Range": f"bytes 0-{file_size-1}/{file_size}",
                 "Content-Length": str(file_size),
             }
-            upload_response = requests.put(upload_url, headers=headers, data=f)
+            upload_response = requests.put(
+                upload_url,
+                headers=headers,
+                data=f,
+                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
+            )
         else:
             # Large file - upload using streaming
             headers = {
@@ -86,7 +104,12 @@ def upload_to_gcs_resumable(signed_url, file_path, chunk_size=1024 * 1024):
                 "Content-Range": f"bytes 0-{file_size-1}/{file_size}",
                 "Content-Length": str(file_size),
             }
-            upload_response = requests.put(upload_url, headers=headers, data=f)
+            upload_response = requests.put(
+                upload_url,
+                headers=headers,
+                data=f,
+                timeout=(GCS_CONNECT_TIMEOUT, GCS_READ_TIMEOUT),
+            )
 
     _handle_gcs_response(upload_response, "resumable upload")
     return True

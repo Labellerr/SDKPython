@@ -11,9 +11,15 @@ Run these tests with: python tests/integration/run_mcp_integration_tests.py
 """
 
 import os
+import sys
+from pathlib import Path
 import pytest
 import uuid
 from dotenv import load_dotenv
+
+# Add tests directory to path to import conftest helpers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import skip_if_missing_env_vars, skip_if_auth_failed, handle_auth_errors
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
@@ -52,54 +58,34 @@ load_dotenv()
 
 
 @pytest.fixture(scope="session")
-def credentials():
-    """Load API credentials from environment"""
-    api_key = os.getenv("API_KEY")
-    api_secret = os.getenv("API_SECRET")
-    client_id = os.getenv("CLIENT_ID")
+def sdk_client(api_credentials):
+    """Create SDK client instance using shared credentials fixture"""
+    try:
+        client = LabellerrClient(
+            api_key=api_credentials["api_key"],
+            api_secret=api_credentials["api_secret"],
+            client_id=api_credentials["client_id"],
+        )
+        yield client
+        client.close()
+    except Exception as e:
+        skip_if_auth_failed(e)
+
+
+@pytest.fixture(scope="session")
+def test_dataset_id(sdk_client, api_credentials):
+    """Create a test dataset and return its ID"""
     test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
-    if not all([api_key, api_secret, client_id]):
-        pytest.skip(
-            "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
-        )
-
-    return {
-        "api_key": api_key,
-        "api_secret": api_secret,
-        "client_id": client_id,
-        "test_data_path": test_data_path,
-    }
-
-
-@pytest.fixture(scope="session")
-def sdk_client(credentials):
-    """Create SDK client instance"""
-    client = LabellerrClient(
-        api_key=credentials["api_key"],
-        api_secret=credentials["api_secret"],
-        client_id=credentials["client_id"],
-    )
-
-    yield client
-
-    # Cleanup
-    client.close()
-
-
-@pytest.fixture(scope="session")
-def test_dataset_id(sdk_client, credentials):
-    """Create a test dataset and return its ID"""
-    test_data_path = credentials.get("test_data_path")
-
     if not test_data_path or not os.path.exists(test_data_path):
-        pytest.skip("Test data path not provided or does not exist")
+        skip_if_missing_env_vars("LABELLERR_TEST_DATA_PATH")
+        pytest.skip("Test data path does not exist")
 
     # Upload files and create dataset
     upload_result = upload_folder_files_to_dataset(
         sdk_client,
         {
-            "client_id": credentials["client_id"],
+            "client_id": api_credentials["client_id"],
             "folder_path": test_data_path,
             "data_type": "image",
         },
@@ -148,8 +134,11 @@ def test_template_id(sdk_client):
         template_name=template_name, data_type="image", questions=questions
     )
 
-    template = template_ops.create_template(sdk_client, params)
-    return template.annotation_template_id
+    try:
+        template = template_ops.create_template(sdk_client, params)
+        return template.annotation_template_id
+    except Exception as e:
+        skip_if_auth_failed(e)
 
 
 @pytest.fixture(scope="session")
@@ -204,18 +193,19 @@ class TestSDKClientInitialization:
 class TestDatasetOperations:
     """Test dataset-related SDK operations"""
 
-    def test_create_dataset_with_folder(self, sdk_client, credentials):
+    def test_create_dataset_with_folder(self, sdk_client, api_credentials):
         """Test creating a dataset by uploading a folder"""
-        test_data_path = credentials.get("test_data_path")
+        test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
         if not test_data_path or not os.path.exists(test_data_path):
-            pytest.skip("Test data path not provided")
+            skip_if_missing_env_vars("LABELLERR_TEST_DATA_PATH")
+            pytest.skip("Test data path does not exist")
 
         # Upload folder
         upload_result = upload_folder_files_to_dataset(
             sdk_client,
             {
-                "client_id": credentials["client_id"],
+                "client_id": api_credentials["client_id"],
                 "folder_path": test_data_path,
                 "data_type": "image",
             },
@@ -246,6 +236,7 @@ class TestDatasetOperations:
         assert "name" in dataset_data
         assert "data_type" in dataset_data
 
+    @handle_auth_errors
     def test_list_datasets(self, sdk_client):
         """Test listing datasets"""
         datasets = list(
@@ -260,6 +251,7 @@ class TestDatasetOperations:
 class TestAnnotationTemplateOperations:
     """Test annotation template-related SDK operations"""
 
+    @handle_auth_errors
     def test_create_annotation_template(self, sdk_client):
         """Test creating an annotation template"""
         template_name = f"Test Template {uuid.uuid4().hex[:8]}"
@@ -284,6 +276,7 @@ class TestAnnotationTemplateOperations:
 
         assert template.annotation_template_id is not None
 
+    @handle_auth_errors
     def test_get_annotation_template(self, sdk_client, test_template_id):
         """Test getting annotation template details"""
         template_data = LabellerrAnnotationTemplate.get_annotation_template(
@@ -326,6 +319,7 @@ class TestProjectOperations:
         assert "project_name" in project_data
         assert "data_type" in project_data
 
+    @handle_auth_errors
     def test_list_projects(self, sdk_client):
         """Test listing projects"""
         projects = project_ops.list_projects(sdk_client)
@@ -386,18 +380,19 @@ class TestExportOperations:
 class TestCompleteWorkflow:
     """Test the complete end-to-end workflow"""
 
-    def test_full_workflow(self, sdk_client, credentials):
+    def test_full_workflow(self, sdk_client, api_credentials):
         """Test creating dataset -> template -> project"""
-        test_data_path = credentials.get("test_data_path")
+        test_data_path = os.getenv("LABELLERR_TEST_DATA_PATH")
 
         if not test_data_path or not os.path.exists(test_data_path):
-            pytest.skip("Test data path not provided")
+            skip_if_missing_env_vars("LABELLERR_TEST_DATA_PATH")
+            pytest.skip("Test data path does not exist")
 
         # Step 1: Create dataset
         upload_result = upload_folder_files_to_dataset(
             sdk_client,
             {
-                "client_id": credentials["client_id"],
+                "client_id": api_credentials["client_id"],
                 "folder_path": test_data_path,
                 "data_type": "image",
             },

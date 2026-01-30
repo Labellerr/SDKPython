@@ -19,6 +19,10 @@ pytestmark = pytest.mark.integration
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Add tests directory to path to import conftest helpers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import handle_auth_errors
+
 # Skip entire module if mcp is not installed
 try:
     from labellerr.mcp_server.server import LabellerrMCPServer
@@ -30,27 +34,12 @@ except ImportError as e:
 
 
 @pytest.fixture(scope="session")
-def credentials():
-    """Load credentials from environment"""
-    api_key = os.getenv("API_KEY")
-    api_secret = os.getenv("API_SECRET")
-    client_id = os.getenv("CLIENT_ID")
-
-    if not all([api_key, api_secret, client_id]):
-        pytest.skip(
-            "Missing required environment variables (API_KEY, API_SECRET, CLIENT_ID)"
-        )
-
-    return {"api_key": api_key, "api_secret": api_secret, "client_id": client_id}
-
-
-@pytest.fixture(scope="session")
-def mcp_server(credentials):
-    """Create MCP server instance"""
+def mcp_server(api_credentials):
+    """Create MCP server instance using shared credentials fixture"""
     # Set env vars for MCP server code
-    os.environ["LABELLERR_API_KEY"] = credentials["api_key"]
-    os.environ["LABELLERR_API_SECRET"] = credentials["api_secret"]
-    os.environ["LABELLERR_CLIENT_ID"] = credentials["client_id"]
+    os.environ["LABELLERR_API_KEY"] = api_credentials["api_key"]
+    os.environ["LABELLERR_API_SECRET"] = api_credentials["api_secret"]
+    os.environ["LABELLERR_CLIENT_ID"] = api_credentials["client_id"]
 
     server = LabellerrMCPServer()
     yield server
@@ -64,32 +53,40 @@ def mcp_server(credentials):
 def test_dataset_id(mcp_server):
     """Get an existing dataset ID for testing"""
     import asyncio
+    from conftest import skip_if_auth_failed
 
-    # List datasets and pick the first one
-    result = asyncio.run(
-        mcp_server._handle_dataset_tool("dataset_list", {"data_type": "image"})
-    )
+    try:
+        # List datasets and pick the first one
+        result = asyncio.run(
+            mcp_server._handle_dataset_tool("dataset_list", {"data_type": "image"})
+        )
 
-    datasets = result.get("response", {}).get("datasets", [])
-    if not datasets:
-        pytest.skip("No datasets available for testing")
+        datasets = result.get("response", {}).get("datasets", [])
+        if not datasets:
+            pytest.skip("No datasets available for testing")
 
-    return datasets[0]["dataset_id"]
+        return datasets[0]["dataset_id"]
+    except Exception as e:
+        skip_if_auth_failed(e)
 
 
 @pytest.fixture(scope="session")
 def test_project_id(mcp_server):
     """Get an existing project ID for testing"""
     import asyncio
+    from conftest import skip_if_auth_failed
 
-    # List projects and pick the first one
-    result = asyncio.run(mcp_server._handle_project_tool("project_list", {}))
+    try:
+        # List projects and pick the first one
+        result = asyncio.run(mcp_server._handle_project_tool("project_list", {}))
 
-    projects = result.get("response", [])
-    if not projects:
-        pytest.skip("No projects available for testing")
+        projects = result.get("response", [])
+        if not projects:
+            pytest.skip("No projects available for testing")
 
-    return projects[0]["project_id"]
+        return projects[0]["project_id"]
+    except Exception as e:
+        skip_if_auth_failed(e)
 
 
 # =============================================================================
@@ -100,6 +97,7 @@ def test_project_id(mcp_server):
 class TestProjectTools:
     """Test project management tools"""
 
+    @handle_auth_errors
     def test_project_list(self, mcp_server):
         """Test project_list tool"""
         import asyncio
@@ -110,6 +108,7 @@ class TestProjectTools:
         assert isinstance(result["response"], list)
         print(f"✓ project_list: Found {len(result['response'])} projects")
 
+    @handle_auth_errors
     def test_project_get(self, mcp_server, test_project_id):
         """Test project_get tool"""
         import asyncio
@@ -121,6 +120,7 @@ class TestProjectTools:
         assert result["response"]["project_id"] == test_project_id
         print(f"✓ project_get: Retrieved project {test_project_id}")
 
+    @handle_auth_errors
     def test_project_create_with_existing_resources(self, mcp_server, test_dataset_id):
         """Test project_create tool with existing dataset"""
         import asyncio
@@ -165,6 +165,7 @@ class TestProjectTools:
         assert "project_id" in result["response"]
         print(f"✓ project_create: Created project {result['response']['project_id']}")
 
+    @handle_auth_errors
     def test_project_update_rotation(self, mcp_server, test_project_id):
         """Test project_update_rotation tool"""
         import asyncio
@@ -194,6 +195,7 @@ class TestProjectTools:
 class TestDatasetTools:
     """Test dataset management tools"""
 
+    @handle_auth_errors
     def test_dataset_list(self, mcp_server):
         """Test dataset_list tool"""
         import asyncio
@@ -206,6 +208,7 @@ class TestDatasetTools:
         assert isinstance(result["response"]["datasets"], list)
         print(f"✓ dataset_list: Found {len(result['response']['datasets'])} datasets")
 
+    @handle_auth_errors
     def test_dataset_get(self, mcp_server, test_dataset_id):
         """Test dataset_get tool"""
         import asyncio
@@ -281,6 +284,7 @@ class TestDatasetTools:
 class TestAnnotationTools:
     """Test annotation tools"""
 
+    @handle_auth_errors
     def test_template_create(self, mcp_server):
         """Test template_create tool"""
         import asyncio
@@ -323,6 +327,7 @@ class TestAnnotationTools:
             f"✓ template_create: Created template {result['response']['template_id']}"
         )
 
+    @handle_auth_errors
     def test_annotation_export(self, mcp_server, test_project_id):
         """Test annotation_export tool"""
         import asyncio
@@ -350,6 +355,7 @@ class TestAnnotationTools:
             else:
                 raise
 
+    @handle_auth_errors
     def test_annotation_check_export_status(self, mcp_server, test_project_id):
         """Test annotation_check_export_status tool"""
         import asyncio
@@ -391,6 +397,7 @@ class TestAnnotationTools:
             else:
                 raise
 
+    @handle_auth_errors
     def test_annotation_download_export(self, mcp_server, test_project_id):
         """Test annotation_download_export tool"""
         import asyncio
@@ -430,11 +437,13 @@ class TestAnnotationTools:
                 # Export might not be ready yet
                 print(f"⚠ annotation_download_export: Export not ready yet ({e})")
 
+    @handle_auth_errors
     def test_annotation_upload_preannotations(self, mcp_server, test_project_id):
         """Test annotation_upload_preannotations tool (requires annotation file)"""
         # This test is skipped if no annotation file is available
         pytest.skip("Requires pre-annotation file - implement when needed")
 
+    @handle_auth_errors
     def test_annotation_upload_preannotations_async(self, mcp_server, test_project_id):
         """Test annotation_upload_preannotations_async tool (requires annotation file)"""
         # This test is skipped if no annotation file is available
@@ -475,6 +484,7 @@ class TestMonitoringTools:
             f"✓ monitor_active_operations: {len(result['active_operations'])} active operations"
         )
 
+    @handle_auth_errors
     def test_monitor_project_progress(self, mcp_server, test_project_id):
         """Test monitor_project_progress tool"""
         import asyncio
@@ -503,6 +513,7 @@ class TestMonitoringTools:
 class TestQueryTools:
     """Test query tools"""
 
+    @handle_auth_errors
     def test_query_project_statistics(self, mcp_server, test_project_id):
         """Test query_project_statistics tool"""
         import asyncio
@@ -515,6 +526,7 @@ class TestQueryTools:
         assert "project_id" in result or "statistics" in result
         print(f"✓ query_project_statistics: Retrieved stats for {test_project_id}")
 
+    @handle_auth_errors
     def test_query_dataset_info(self, mcp_server, test_dataset_id):
         """Test query_dataset_info tool"""
         import asyncio
@@ -540,6 +552,7 @@ class TestQueryTools:
             f"✓ query_operation_history: Retrieved {len(result['operations'])} operations"
         )
 
+    @handle_auth_errors
     def test_query_search_projects(self, mcp_server):
         """Test query_search_projects tool"""
         import asyncio
@@ -561,6 +574,7 @@ class TestQueryTools:
 class TestCompleteWorkflow:
     """Test complete end-to-end workflow using MCP tools"""
 
+    @handle_auth_errors
     def test_full_project_creation_workflow(self, mcp_server, test_dataset_id):
         """Test creating a complete project from scratch"""
         import asyncio

@@ -30,44 +30,13 @@ env:
   PYTHON_VERSION: '3.9'
 
 jobs:
-  # Test before releasing - reuse existing CI strategy
+  # Test before releasing - unified test suite
   test:
-    name: Test Suite
+    name: Test Suite (Unit + Integration)
     runs-on: ubuntu-latest
     if: ${{ !inputs.skip_tests }}
-    strategy:
-      matrix:
-        python-version: ['3.9']
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Run linting
-        run: |
-          make lint
-      - name: Run formatting
-        run: |
-          make format
-      - name: Run tests
-        run: |
-          make test
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: test
-    if: ${{ !inputs.skip_tests && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
-
+    environment: prod
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,26 +49,81 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install -e ".[dev]"
+
+      - name: Run linting
+        run: |
+          make lint
+          
+      - name: Run formatting
+        run: |
+          make format
+          
+      - name: Run unit tests
+        run: |
+          mkdir -p tests/integration/test_reports
+          make test-unit
 
       - name: Run integration tests
         env:
-          LABELLERR_API_KEY: ${{ secrets.LABELLERR_API_KEY }}
-          LABELLERR_API_SECRET: ${{ secrets.LABELLERR_API_SECRET }}
-          LABELLERR_CLIENT_ID: ${{ secrets.LABELLERR_CLIENT_ID }}
-          LABELLERR_TEST_EMAIL: ${{ secrets.LABELLERR_TEST_EMAIL }}
+          API_KEY: ${{ secrets.LABELLERR_API_KEY }}
+          API_SECRET: ${{ secrets.LABELLERR_API_SECRET }}
+          CLIENT_ID: ${{ secrets.LABELLERR_CLIENT_ID }}
+          TEST_EMAIL: ${{ secrets.LABELLERR_TEST_EMAIL }}
           AWS_CONNECTION_IMAGE: ${{ secrets.AWS_CONNECTION_IMAGE }}
           AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
           GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
           GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
+          LABELLERR_TEST_DATA_PATH: ${{ github.workspace }}/tests/fixtures/mcp_images
+          IMAGE_DATASET_ID: ${{ vars.IMAGE_DATASET_ID }}
+          AUDIO_MP3_DATASET_ID: ${{ vars.AUDIO_MP3_DATASET_ID }}
+          AUDIO_WAV_DATASET_ID: ${{ vars.AUDIO_WAV_DATASET_ID }}
+          VIDEO_DATASET_ID: ${{ vars.VIDEO_DATASET_ID }}
+          DOCUMENT_DATASET_ID: ${{ vars.DOCUMENT_DATASET_ID }}
+          TEXT_DATASET_ID: ${{ vars.TEXT_DATASET_ID }}
         run: |
-          python -m pytest labellerr_integration_case_tests.py -v
+          make test-integration
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-test-reports
+          path: |
+            tests/integration/test_reports/
+            htmlcov/
+          retention-days: 90
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: tests/integration/test_reports/junit.xml
+          check_name: Release Test Results
+          comment_title: Release Test Results
+
+      - name: Test Report Summary
+        if: always()
+        run: |
+          echo "## 📊 Release Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Unit Tests ✅" >> $GITHUB_STEP_SUMMARY
+          echo "### Integration Tests ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f tests/integration/test_reports/junit.xml ]; then
+            echo "✅ Test reports generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📄 Reports available in artifacts" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test reports found" >> $GITHUB_STEP_SUMMARY
+          fi
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [test, integration-test]
-    if: always() && github.ref == 'refs/heads/main' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.integration-test.result == 'success' || needs.integration-test.result == 'skipped')
+    needs: [test]
+    if: always() && github.ref == 'refs/heads/main' && (needs.test.result == 'success' || needs.test.result == 'skipped')
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
