@@ -35,6 +35,7 @@ jobs:
     name: Test Suite (Unit + Integration)
     runs-on: ubuntu-latest
     if: ${{ !inputs.skip_tests }}
+    environment: prod
     
     steps:
       - name: Checkout code
@@ -75,8 +76,48 @@ jobs:
           GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
           GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
           LABELLERR_TEST_DATA_PATH: ${{ github.workspace }}/tests/fixtures/mcp_images
+          IMAGE_DATASET_ID: ${{ vars.IMAGE_DATASET_ID }}
+          AUDIO_MP3_DATASET_ID: ${{ vars.AUDIO_MP3_DATASET_ID }}
+          AUDIO_WAV_DATASET_ID: ${{ vars.AUDIO_WAV_DATASET_ID }}
+          VIDEO_DATASET_ID: ${{ vars.VIDEO_DATASET_ID }}
+          DOCUMENT_DATASET_ID: ${{ vars.DOCUMENT_DATASET_ID }}
+          TEXT_DATASET_ID: ${{ vars.TEXT_DATASET_ID }}
         run: |
           make test-integration
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-test-reports
+          path: |
+            tests/integration/test_reports/
+            htmlcov/
+          retention-days: 90
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: tests/integration/test_reports/junit.xml
+          check_name: Release Test Results
+          comment_title: Release Test Results
+
+      - name: Test Report Summary
+        if: always()
+        run: |
+          echo "## 📊 Release Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Unit Tests ✅" >> $GITHUB_STEP_SUMMARY
+          echo "### Integration Tests ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f tests/integration/test_reports/junit.xml ]; then
+            echo "✅ Test reports generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📄 Reports available in artifacts" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test reports found" >> $GITHUB_STEP_SUMMARY
+          fi
 
   release:
     name: Create Release

@@ -10,17 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    env:
-      API_KEY: ${{ secrets.API_KEY }}
-      API_SECRET: ${{ secrets.API_SECRET }}
-      CLIENT_ID: ${{ secrets.CLIENT_ID }}
-      TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
-      AWS_CONNECTION_IMAGE: ${{ secrets.AWS_CONNECTION_IMAGE }}
-      AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
-      GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
-      GCS_CONNECTION_VIDEO: ${{ secrets.GCS_CONNECTION_VIDEO }}
-      LABELLERR_TEST_DATA_PATH: ${{ github.workspace }}/tests/fixtures/mcp_images
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,37 +45,6 @@ jobs:
 
       - name: Run unit tests
         run: |
-          mkdir -p reports
+          mkdir -p tests/integration/test_reports
           make test-unit
         continue-on-error: false
-
-      - name: Upload test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-reports
-          path: |
-            tests/integration/test_reports/
-            htmlcov/
-          retention-days: 30
-
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
-        with:
-          files: tests/integration/test_reports/junit.xml
-          check_name: Test Results
-          comment_title: Test Results
-
-      - name: Test Report Summary
-        if: always()
-        run: |
-          echo "## 📊 Test Execution Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f tests/integration/test_reports/junit.xml ]; then
-            echo "✅ Test reports generated successfully" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "📄 Reports available in artifacts" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ No test reports found" >> $GITHUB_STEP_SUMMARY
-          fi
