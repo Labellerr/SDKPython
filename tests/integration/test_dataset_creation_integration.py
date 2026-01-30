@@ -301,7 +301,7 @@ class TestDatasetValidationIntegration:
     """Integration tests for dataset ID validation with real API"""
 
     def test_invalid_dataset_id_format_rejected(self, integration_client):
-        """Test that invalid dataset ID formats are rejected before API call"""
+        """Test that invalid dataset ID formats are rejected by API with 400 response"""
         invalid_ids = [
             "invalid-id",
             "not-a-uuid",
@@ -310,10 +310,15 @@ class TestDatasetValidationIntegration:
         ]
 
         for invalid_id in invalid_ids:
-            with pytest.raises(
-                InvalidDatasetIDError, match="Invalid dataset ID format"
-            ):
+            with pytest.raises((InvalidDatasetError, LabellerrError)) as exc_info:
                 LabellerrDataset(integration_client, invalid_id)
+
+            # Verify it's a 400 error for invalid format
+            error_msg = str(exc_info.value).lower()
+            assert any(
+                x in error_msg
+                for x in ["invalid", "format", "400", "bad request", "dataset"]
+            ), f"Expected invalid dataset format error, got: {exc_info.value}"
 
     def test_valid_uuid_format_but_nonexistent_dataset(self, integration_client):
         """

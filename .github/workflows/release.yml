@@ -27,7 +27,7 @@ on:
         type: boolean
 
 env:
-  PYTHON_VERSION: '3.9'
+  PYTHON_VERSION: '3.12'
 
 jobs:
   # Test before releasing - unified test suite
@@ -41,10 +41,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.9
+      - name: Set up Python 3.12
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -67,10 +67,10 @@ jobs:
 
       - name: Run integration tests
         env:
-          API_KEY: ${{ secrets.LABELLERR_API_KEY }}
-          API_SECRET: ${{ secrets.LABELLERR_API_SECRET }}
-          CLIENT_ID: ${{ secrets.LABELLERR_CLIENT_ID }}
-          TEST_EMAIL: ${{ secrets.LABELLERR_TEST_EMAIL }}
+          API_KEY: ${{ secrets.API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          CLIENT_ID: ${{ vars.CLIENT_ID }}
+          TEST_EMAIL: ${{ vars.CLIENT_EMAIL }}
           AWS_CONNECTION_IMAGE: ${{ secrets.AWS_CONNECTION_IMAGE }}
           AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
           GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
