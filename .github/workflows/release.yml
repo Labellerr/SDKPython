@@ -67,10 +67,10 @@ jobs:
 
       - name: Run integration tests
         env:
-          API_KEY: ${{ secrets.LABELLERR_API_KEY }}
-          API_SECRET: ${{ secrets.LABELLERR_API_SECRET }}
-          CLIENT_ID: ${{ vars.LABELLERR_CLIENT_ID }}
-          TEST_EMAIL: ${{ secrets.LABELLERR_TEST_EMAIL }}
+          API_KEY: ${{ secrets.API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          CLIENT_ID: ${{ vars.CLIENT_ID }}
+          TEST_EMAIL: ${{ vars.CLIENT_EMAIL }}
           AWS_CONNECTION_IMAGE: ${{ secrets.AWS_CONNECTION_IMAGE }}
           AWS_CONNECTION_VIDEO: ${{ secrets.AWS_CONNECTION_VIDEO }}
           GCS_CONNECTION_IMAGE: ${{ secrets.GCS_CONNECTION_IMAGE }}
