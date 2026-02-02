@@ -57,7 +57,7 @@ class Export:
             return response
 
         def is_completed(response_data):
-            for status_item in response_data.get("status", []):
+            for status_item in response_data.get("response", []):
                 if status_item.get("report_id") == self._report_id:
                     if status_item.get("export_status", "").lower() == "failed":
                         return on_failure(response_data)

@@ -553,7 +553,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             )
 
             # Now process each report_id
-            for idx, status_item in enumerate(result.get("status", [])):
+            for idx, status_item in enumerate(result.get("response", [])):
                 if (
                     status_item.get("is_completed")
                     and status_item.get("export_status") == "Created"
@@ -565,7 +565,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                         export_id=status_item["report_id"],
                         client_id=self.client.client_id,
                     )
-                    result["status"][idx]["download_url"] = download_url
+                    result["response"][idx]["download_url"] = download_url
 
             return result
 
