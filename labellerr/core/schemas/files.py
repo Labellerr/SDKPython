@@ -12,7 +12,7 @@ class ListFileParams(BaseModel):
 
     client_id: str = Field(min_length=1)
     project_id: str = Field(min_length=1)
-    search_queries: Dict[str, Any]
+    search_queries: Any
     size: int = Field(default=10, gt=0)
     next_search_after: Optional[Any] = None
 
