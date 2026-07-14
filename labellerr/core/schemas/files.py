@@ -2,7 +2,7 @@
 Schema models for file operations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 

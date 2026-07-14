@@ -451,7 +451,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         while True:
             files_res = self.list_files(search_queries=[], size=1000, next_search_after=next_search_after)
             response_data = files_res.get("response", {})
-            
+
             if first_page:
                 slice_id = response_data.get("slice_id")
                 first_page = False
@@ -492,7 +492,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         # 3. Call the UI exports endpoint appending client_id in query parameters
         url = f"{constants.BASE_URL}/exports/files?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
-        
+
         headers = {
             "Origin": constants.ALLOWED_ORIGINS,
             "Content-Type": "application/json",
