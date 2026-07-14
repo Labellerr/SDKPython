@@ -78,7 +78,7 @@ class TestTemplateCreation:
             # Verify the create request payload
             create_call = mock_request.call_args_list[0]
             payload = create_call[1]["json"]
-            assert payload["templateName"] == "Single BBox Template"
+            assert payload["template_name"] == "Single BBox Template"
             assert len(payload["questions"]) == 1
             assert payload["questions"][0]["option_type"] == "BoundingBox"
             assert payload["questions"][0]["color"] == "#FF0000"

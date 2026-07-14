@@ -52,7 +52,7 @@ def create_template(
         question_dict.pop("question_type", None)
         questions_data.append(question_dict)
 
-    payload = {"templateName": params.template_name, "questions": questions_data}
+    payload = {"template_name": params.template_name, "questions": questions_data}
     url = (
         f"{constants.BASE_URL}/annotations/create_template?client_id={client.client_id}&data_type={params.data_type.value}"
         f"&uuid={unique_id}"
