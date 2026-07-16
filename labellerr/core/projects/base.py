@@ -442,12 +442,22 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             return future.result()
 
     def _build_export_search_queries(self, export_config: schemas.CreateExportParams) -> list:
+        import time
         search_queries = []
         valid_statuses = [s for s in (export_config.statuses or []) if s]
         if valid_statuses:
-            search_queries.append({"id": "status", "values": valid_statuses})
+            search_queries.append({
+                "op": "OR",
+                "id": "file_status",
+                "values": [{"p": "in", "v": valid_statuses}],
+            })
         if export_config.updated_after_timestamp:
-            search_queries.append({"id": "updated_after_timestamp", "values": export_config.updated_after_timestamp})
+            now_ms = int(time.time() * 1000)
+            search_queries.append({
+                "op": "OR",
+                "id": "last_updated_date",
+                "values": [{"p": "between", "v": [{"start": export_config.updated_after_timestamp, "end": now_ms}]}],
+            })
         return search_queries
 
     def _fetch_slice_id(self, search_queries: list) -> str:
