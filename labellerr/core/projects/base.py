@@ -498,7 +498,6 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         report_id = response.get("response") if isinstance(response, dict) else response
         return Export(report_id=report_id, project=self)
 
-
     def create_export(self, export_config: schemas.CreateExportParams):
         """
         Creates an export with the given configuration.
