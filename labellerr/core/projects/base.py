@@ -443,8 +443,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
     def _build_export_search_queries(self, export_config: schemas.CreateExportParams) -> list:
         search_queries = []
-        # Filter out 'None' string — backend search API doesn't support null status filter
-        valid_statuses = [s for s in (export_config.statuses or []) if s and s != 'None']
+        valid_statuses = [s for s in (export_config.statuses or []) if s]
         if valid_statuses:
             search_queries.append({"id": "status", "values": valid_statuses})
         if export_config.updated_after_timestamp:
