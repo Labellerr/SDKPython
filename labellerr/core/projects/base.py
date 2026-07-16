@@ -441,6 +441,73 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         else:
             return future.result()
 
+    def _build_export_search_queries(self, export_config: schemas.CreateExportParams) -> list:
+        import time
+        search_queries = []
+        valid_statuses = [s for s in (export_config.statuses or []) if s]
+        if valid_statuses:
+            search_queries.append({
+                "op": "OR",
+                "id": "file_status",
+                "values": [{"p": "in", "v": valid_statuses}],
+            })
+        if export_config.updated_after_timestamp:
+            now_ms = int(time.time() * 1000)
+            search_queries.append({
+                "op": "OR",
+                "id": "last_updated_date",
+                "values": [{"p": "between", "v": [{"start": export_config.updated_after_timestamp, "end": now_ms}]}],
+            })
+        return search_queries
+
+    def _fetch_slice_id(self, search_queries: list) -> str:
+        files_res = self.list_files(search_queries=search_queries, size=10)
+        response_data = files_res.get("response", {})
+        slice_id = response_data.get("slice_id")
+        if not slice_id:
+            raise LabellerrError("Could not retrieve slice_id from project files.")
+        return slice_id
+
+    def _submit_export_job(self, export_config: schemas.CreateExportParams):
+        # 1. Get slice_id based on user search filters
+        search_queries = self._build_export_search_queries(export_config)
+        slice_id = self._fetch_slice_id(search_queries)
+
+        # 2. Build the payload
+        unique_id = client_utils.generate_request_id()
+        payload = {
+            "export_name": export_config.export_name,
+            "export_description": export_config.export_description or "",
+            "export_format": export_config.export_format,
+            "connection_id": export_config.connection_id,
+            "destination": export_config.export_destination.value,
+            "export_all": True,
+            "export_status": "Generating Export",
+            "file_activity": False,
+            "question_ids": export_config.question_ids or ["all"],
+            "slice_id": slice_id,
+            "export_path": export_config.export_folder_path,
+        }
+
+        # 3. Call the UI exports endpoint
+        url = f"{constants.BASE_URL}/exports/files?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+        headers = {
+            "Origin": constants.ALLOWED_ORIGINS,
+            "Content-Type": "application/json",
+        }
+
+        response = self.client.make_request(
+            "POST",
+            url,
+            extra_headers=headers,
+            request_id=unique_id,
+            data=json.dumps(payload),
+        )
+
+        # 4. Extract report_id from response
+        report_id = response.get("response") if isinstance(response, dict) else response
+        return Export(report_id=report_id, project=self)
+
     def create_export(self, export_config: schemas.CreateExportParams):
         """
         Creates an export with the given configuration.
@@ -451,25 +518,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
         if export_config.export_destination == schemas.ExportDestination.LOCAL:
             return self.create_local_export(export_config)
-
         else:
-            payload = export_config.model_dump()
             if not export_config.connection_id or export_config.connection_id == "":
                 raise LabellerrError("connection_id is required")
-            payload.update(
-                {
-                    "question_ids": ["all"],
-                }
-            )
-
-            response = self.client.make_request(
-                "POST",
-                f"{constants.BASE_URL}/sdk/export/files?project_id={self.project_id}&client_id={self.client.client_id}",
-                extra_headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
-            )
-            report_id = response.get("response", {}).get("report_id")
-            return Export(report_id=report_id, project=self)
+            return self._submit_export_job(export_config)
 
     def create_local_export(self, export_config: schemas.CreateExportParams):
         """
@@ -479,28 +531,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :return: Export instance with report_id and status tracking
         :raises LabellerrError: If the export creation fails
         """
-
-        unique_id = client_utils.generate_request_id()
-
-        export_config_dict = export_config.model_dump()
-        export_config_dict.update(
-            {"export_destination": schemas.ExportDestination.LOCAL.value}
-        )
-
-        payload = json.dumps(export_config_dict)
-
-        response = self.client.make_request(
-            "POST",
-            f"{constants.BASE_URL}/sdk/export/files?project_id={self.project_id}&client_id={self.client.client_id}",
-            extra_headers={
-                "Origin": constants.ALLOWED_ORIGINS,
-                "Content-Type": "application/json",
-            },
-            request_id=unique_id,
-            data=payload,
-        )
-        report_id = response.get("response", {}).get("report_id")
-        return Export(report_id=report_id, project=self)
+        return self._submit_export_job(export_config)
 
     def list_exports(self):
         """

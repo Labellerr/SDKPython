@@ -4,7 +4,7 @@ Pydantic models for LabellerrClient method parameter validation.
 
 import os
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -340,7 +340,7 @@ class ListFileParams(BaseModel):
 
     client_id: str = Field(min_length=1)
     project_id: str = Field(min_length=1)
-    search_queries: Dict[str, Any]
+    search_queries: Union[List[Any], Dict[str, Any]]
     size: int = Field(default=10, gt=0)
     next_search_after: Optional[Any] = None
 
