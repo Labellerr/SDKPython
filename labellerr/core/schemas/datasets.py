@@ -3,7 +3,7 @@ Schema models for dataset operations.
 """
 
 import os
-from enum import StrEnum
+from enum import Enum
 from typing import List, Literal
 from uuid import UUID
 
@@ -11,7 +11,7 @@ from .base import DatasetDataType
 from pydantic import BaseModel, Field, field_validator
 
 
-class DataSetScope(StrEnum):
+class DataSetScope(str, Enum):
     project = "project"
     client = "client"
     public = "public"

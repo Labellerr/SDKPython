@@ -50,9 +50,11 @@ class LabellerrClient:
 
         # Import here to avoid circular imports
         from .users.base import LabellerrUsers
+        from .sam2.base import LabellerrSam2
 
         # Initialize Users handler for user-related operations
         self.users = LabellerrUsers(self)
+        self.sam2 = LabellerrSam2(self)
 
     def _setup_session(self):
         """
