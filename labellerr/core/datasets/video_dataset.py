@@ -21,8 +21,8 @@ class VideoDataset(LabellerrDataset):
             print(f"# Starting batch video processing for dataset: {self.dataset_id}")
             print(f"{'#'*70}\n")
 
-            # Fetch all video files
-            video_files = self.fetch_files()
+            # Fetch all video files (convert generator to list)
+            video_files = list(self.fetch_files())
 
             if not video_files:
                 print("No video files found in dataset")

@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
 from .. import client_utils, constants, gcs
-from ..exceptions import LabellerrError
 from ..client import LabellerrClient
+from ..exceptions import LabellerrError
 
 
 def get_total_folder_file_count_and_total_size(folder_path, data_type):
