@@ -488,6 +488,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             "slice_id": slice_id,
             "export_path": export_config.export_folder_path,
         }
+        # Only send layout/delivery when set so the backend can auto-set them (e.g. for video)
+        if export_config.export_layout:
+            payload["export_layout"] = export_config.export_layout.value
+        if export_config.delivery_format:
+            payload["delivery_format"] = export_config.delivery_format.value
 
         # 3. Call the UI exports endpoint
         url = f"{constants.BASE_URL}/exports/files?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
