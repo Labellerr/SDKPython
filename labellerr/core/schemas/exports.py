@@ -8,17 +8,6 @@ class ExportDestination(str, Enum):
     S3 = "s3"
 
 
-class ExportLayout(str, Enum):
-    MONOLITHIC = "monolithic"
-    PER_FILE = "per_file"
-
-
-class DeliveryFormat(str, Enum):
-    DATA_FILE = "data_file"
-    MANIFEST = "manifest"
-    ARCHIVE = "archive"
-
-
 class CreateExportParams(BaseModel):
     """Parameters for creating an export."""
 
@@ -30,14 +19,6 @@ class CreateExportParams(BaseModel):
     export_destination: ExportDestination = Field(default=ExportDestination.LOCAL)
     connection_id: Optional[str] = None
     export_folder_path: Optional[str] = None
-    export_layout: Optional[ExportLayout] = Field(
-        default=None,
-        description="'monolithic' (single file) or 'per_file' (one file per asset). Auto-set to 'per_file' for video projects when omitted",
-    )
-    delivery_format: Optional[DeliveryFormat] = Field(
-        default=None,
-        description="'data_file' for monolithic layout, 'manifest' or 'archive' for per_file layout. Auto-set based on layout when omitted",
-    )
     updated_after_timestamp: Optional[int] = Field(
         default=None,
         description="Unix Timestamp in milliseconds to filter files to be exported based on last updated time",
