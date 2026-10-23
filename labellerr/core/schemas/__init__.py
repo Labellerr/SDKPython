@@ -75,7 +75,9 @@ from labellerr.core.schemas.autolabel import (
 # Export schemas
 from labellerr.core.schemas.exports import (
     CreateExportParams,
+    DeliveryFormat,
     ExportDestination,
+    ExportLayout,
     ExportsListResponse,
 )
 
@@ -135,7 +137,9 @@ __all__ = [
     "TrainingRequest",
     # Export schemas
     "CreateExportParams",
+    "DeliveryFormat",
     "ExportDestination",
+    "ExportLayout",
     "ExportsListResponse",
     # Annotation templates schemas
     "AnnotationQuestion",
