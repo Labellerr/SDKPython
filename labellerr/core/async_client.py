@@ -23,16 +23,25 @@ class AsyncLabellerrClient:
     Async client for interacting with the Labellerr API using aiohttp for better performance.
     """
 
-    def __init__(self, api_key: str, api_secret: str, connector_limit: int = 100):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
+        connector_limit: int = 100,
+        access_token: Any = None,
+    ):
         """
         Initializes the AsyncLabellerrClient with API credentials.
 
         :param api_key: The API key for authentication.
         :param api_secret: The API secret for authentication.
         :param connector_limit: Maximum number of connections in the pool
+        :param access_token: A user access token, or a zero-argument callable returning
+            one. When set it is sent instead of the API key and secret.
         """
         self.api_key = api_key
         self.api_secret = api_secret
+        self.access_token = access_token
         self.base_url = constants.BASE_URL
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector_limit = connector_limit
@@ -85,6 +94,7 @@ class AsyncLabellerrClient:
             source="sdk-async",
             client_id=client_id,
             extra_headers=extra_headers,
+            access_token=self.access_token,
         )
 
     async def _request(

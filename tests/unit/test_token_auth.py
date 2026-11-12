@@ -171,3 +171,18 @@ def test_base_url_and_origin_come_from_the_environment(monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(constants)
+
+
+def test_async_client_with_token_sends_bearer():
+    from labellerr.core.async_client import AsyncLabellerrClient
+
+    headers = AsyncLabellerrClient(access_token="tok")._build_headers(client_id="7")
+    assert headers["Authorization"] == "Bearer tok" and headers["source"] == "sdk-async"
+    assert "api_key" not in headers
+
+
+def test_async_client_with_api_key_is_unchanged():
+    from labellerr.core.async_client import AsyncLabellerrClient
+
+    headers = AsyncLabellerrClient("k", "s")._build_headers(client_id="7")
+    assert headers["api_key"] == "k" and headers["api_secret"] == "s" and "Authorization" not in headers
