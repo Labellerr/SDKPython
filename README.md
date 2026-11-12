@@ -66,6 +66,26 @@ Replace `'your_api_key'` and `'your_api_secret'` with your actual API credential
 
 ---
 
+### Sign in with a user token
+
+Besides an API key and secret, the client can act as a signed-in Labellerr user. Pass the user's access token (from Labellerr's Auth0 login, audience `https://api.labellerr.com/`):
+
+```python
+from labellerr.core import LabellerrClient
+
+client = LabellerrClient.from_access_token(
+    access_token="<user access token>",
+    client_id="<workspace client id>",
+    email_id="user@example.com",
+)
+```
+
+`access_token` may also be a zero-argument function that returns the current token, for long-running programs that refresh it. Requests are then authorised as that user, with their roles and project membership.
+
+Two environment variables change where the SDK sends requests. `LABELLERR_BASE_URL` sets the API base URL (default `https://api.labellerr.com`). `LABELLERR_ORIGIN` sets the `origin` header (default `https://pro.labellerr.com`); a service that calls the API with user tokens must set its own origin, otherwise its requests replace the user's browser session.
+
+---
+
 ### Creating a New Project
 
 ---

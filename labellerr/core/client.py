@@ -74,7 +74,14 @@ class LabellerrClient:
         :param email_id: The user's email.
         :param kwargs: Any other LabellerrClient argument (connection pooling options).
         """
-        return cls(None, None, client_id, access_token=access_token, email_id=email_id, **kwargs)
+        return cls(
+            None,
+            None,
+            client_id,
+            access_token=access_token,
+            email_id=email_id,
+            **kwargs,
+        )
 
     def _setup_session(self):
         """
