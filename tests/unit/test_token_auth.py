@@ -145,3 +145,29 @@ def test_list_connections_with_token_client_sends_bearer_and_email():
     headers = request.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer tok" and headers["email_id"] == "u@example.com"
     assert "api_key" not in headers
+
+
+import importlib
+
+
+def test_base_url_and_origin_default_to_production(monkeypatch):
+    monkeypatch.delenv("LABELLERR_BASE_URL", raising=False)
+    monkeypatch.delenv("LABELLERR_ORIGIN", raising=False)
+    try:
+        importlib.reload(constants)
+        assert constants.BASE_URL == "https://api.labellerr.com"
+        assert constants.ALLOWED_ORIGINS == "https://pro.labellerr.com"
+    finally:
+        importlib.reload(constants)
+
+
+def test_base_url_and_origin_come_from_the_environment(monkeypatch):
+    monkeypatch.setenv("LABELLERR_BASE_URL", "https://gateway.example.test/")
+    monkeypatch.setenv("LABELLERR_ORIGIN", "https://mcp.labellerr.com")
+    try:
+        importlib.reload(constants)
+        assert constants.BASE_URL == "https://gateway.example.test"
+        assert constants.ALLOWED_ORIGINS == "https://mcp.labellerr.com"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(constants)

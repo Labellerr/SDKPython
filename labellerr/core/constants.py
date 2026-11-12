@@ -1,5 +1,8 @@
-BASE_URL = "https://api.labellerr.com"
-ALLOWED_ORIGINS = "https://pro.labellerr.com"
+import os
+
+# Both can be overridden from the environment, e.g. to target a non-production gateway.
+BASE_URL = (os.environ.get("LABELLERR_BASE_URL") or "https://api.labellerr.com").rstrip("/")
+ALLOWED_ORIGINS = os.environ.get("LABELLERR_ORIGIN") or "https://pro.labellerr.com"
 
 
 FILE_BATCH_SIZE = 15 * 1024 * 1024  # 15MB
