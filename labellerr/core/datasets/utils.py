@@ -97,7 +97,10 @@ def connect_local_files(
     """
     url = f"{constants.BASE_URL}/connectors/connect/local?client_id={client_id}"
     headers = client_utils.build_headers(
-        api_key=client.api_key, api_secret=client.api_secret, client_id=client_id
+        api_key=client.api_key,
+        api_secret=client.api_secret,
+        client_id=client_id,
+        access_token=getattr(client, "access_token", None),
     )
 
     body = {"file_names": file_names}

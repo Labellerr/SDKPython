@@ -90,3 +90,58 @@ def test_client_with_api_key_is_unchanged():
     assert headers["api_key"] == "k" and headers["api_secret"] == "s"
     assert "Authorization" not in headers
     assert client.access_token is None and client.email_id is None
+
+
+import re
+from pathlib import Path
+
+import labellerr
+
+CORE = Path(labellerr.__file__).parent / "core"
+
+
+def _call_text(text, start):
+    """Source of the call starting at `start` (index of the name), up to its matching ')'."""
+    depth = 0
+    for i in range(text.index("(", start), len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    raise AssertionError("unbalanced call")
+
+
+def test_every_build_headers_call_passes_the_access_token():
+    missing = []
+    for path in CORE.rglob("*.py"):
+        if path.name == "client_utils.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"client_utils\.build_headers\(", text):
+            if "access_token=" not in _call_text(text, match.start()):
+                missing.append(f"{path.relative_to(CORE)}:{text.count(chr(10), 0, match.start()) + 1}")
+    assert missing == []
+
+
+def test_no_call_site_sends_the_api_key_as_identity():
+    offenders = []
+    for path in CORE.rglob("*.py"):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"email_id\W+(self\.)?client\.api_key", line):
+                offenders.append(f"{path.relative_to(CORE)}:{number}")
+    assert offenders == []
+
+
+def test_list_connections_with_token_client_sends_bearer_and_email():
+    from labellerr.core.connectors import list_connections
+
+    client = LabellerrClient.from_access_token("tok", 7, email_id="u@example.com", enable_connection_pooling=False)
+    with patch("labellerr.core.client.requests.request") as request:
+        request.return_value.status_code = 200
+        request.return_value.json.return_value = {"response": []}
+        list_connections(client, "s3")
+    headers = request.call_args.kwargs["headers"]
+    assert headers["Authorization"] == "Bearer tok" and headers["email_id"] == "u@example.com"
+    assert "api_key" not in headers

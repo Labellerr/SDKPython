@@ -112,7 +112,8 @@ class LabellerrConnection(metaclass=LabellerrConnectionMeta):
             api_key=self.client.api_key,
             api_secret=self.client.api_secret,
             client_id=self.client.client_id,
-            extra_headers={"email_id": self.client.api_key},
+            extra_headers={"email_id": client_utils.caller_id(self.client)},
+            access_token=getattr(self.client, "access_token", None),
         )
 
         # Test endpoint also expects multipart/form-data format

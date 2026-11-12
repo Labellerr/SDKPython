@@ -51,6 +51,7 @@ class GCSConnection(LabellerrConnection):
             api_key=client.api_key,
             api_secret=client.api_secret,
             client_id=client.client_id,
+            access_token=getattr(client, "access_token", None),
         )
 
         response = client_utils.request(
@@ -85,6 +86,7 @@ class GCSConnection(LabellerrConnection):
             api_key=client.api_key,
             api_secret=client.api_secret,
             client_id=client.client_id,
+            access_token=getattr(client, "access_token", None),
         )
 
         # Prepare multipart form data
