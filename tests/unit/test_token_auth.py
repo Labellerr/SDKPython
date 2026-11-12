@@ -56,3 +56,37 @@ def test_caller_id_prefers_email_then_api_key():
     assert client_utils.caller_id(_Obj(email_id="u@example.com", api_key="k")) == "u@example.com"
     assert client_utils.caller_id(_Obj(api_key="k")) == "k"
     assert client_utils.caller_id(_Obj(email_id=None, api_key=None)) is None
+
+
+from unittest.mock import patch
+
+from labellerr.core.client import LabellerrClient
+
+
+class _Response:
+    status_code = 200
+
+    def json(self):
+        return {"response": "ok"}
+
+
+def _sent_headers(client):
+    with patch("labellerr.core.client.requests.request", return_value=_Response()) as request:
+        client.make_request("GET", "https://example.test/x")
+    return request.call_args.kwargs["headers"]
+
+
+def test_client_with_token_sends_bearer():
+    client = LabellerrClient.from_access_token("tok", 7, email_id="u@example.com", enable_connection_pooling=False)
+    headers = _sent_headers(client)
+    assert headers["Authorization"] == "Bearer tok"
+    assert "api_key" not in headers and "api_secret" not in headers
+    assert client.email_id == "u@example.com" and client.api_key is None
+
+
+def test_client_with_api_key_is_unchanged():
+    client = LabellerrClient("k", "s", 7, enable_connection_pooling=False)
+    headers = _sent_headers(client)
+    assert headers["api_key"] == "k" and headers["api_secret"] == "s"
+    assert "Authorization" not in headers
+    assert client.access_token is None and client.email_id is None
