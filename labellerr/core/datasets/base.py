@@ -6,7 +6,7 @@ import uuid
 from abc import ABCMeta
 from typing import Dict, Any, Generator, Optional, TYPE_CHECKING
 
-from .. import constants
+from .. import client_utils, constants
 from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDError
 from ..client import LabellerrClient
 
@@ -268,7 +268,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
                 "dataset_id": self.dataset_id,
                 "path": path,
                 "data_type": data_type,
-                "email_id": self.client.api_key,
+                "email_id": client_utils.caller_id(self.client),
                 "connection_id": connection.connection_id,
             }
         )

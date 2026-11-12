@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from .. import constants
+from .. import client_utils, constants
 from ...schemas import AWSConnectionParams, ConnectionType, ConnectorType
 from ...schemas import GCSConnectionParams
 from .connections import LabellerrConnection
@@ -50,7 +50,7 @@ def list_connections(
     }
     if connection_type:
         params["connection_type"] = connection_type
-    extra_headers = {"email_id": client.api_key}
+    extra_headers = {"email_id": client_utils.caller_id(client)}
 
     response = client.make_request(
         "GET", url, extra_headers=extra_headers, request_id=unique_id, params=params
@@ -73,7 +73,7 @@ def delete_connection(client: "LabellerrClient", connection_id: str):
         f"?client_id={client.client_id}&uuid={request_id}"
     )
 
-    extra_headers = {"email_id": client.api_key}
+    extra_headers = {"email_id": client_utils.caller_id(client)}
 
     response = client.make_request(
         "POST",

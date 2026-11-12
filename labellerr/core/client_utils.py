@@ -12,36 +12,54 @@ from .exceptions import LabellerrError
 
 
 def build_headers(
-    api_key: str,
-    api_secret: str,
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
     source: str = "sdk",
     client_id: Optional[str] = None,
     extra_headers: Optional[Dict[str, str]] = None,
+    access_token: Any = None,
 ) -> Dict[str, str]:
     """
     Builds standard headers for API requests.
+
+    Authentication is either an API key and secret, or a user access token. When
+    ``access_token`` is given it is sent as ``Authorization: Bearer <token>`` and the
+    key and secret are not sent.
 
     :param api_key: API key for authentication
     :param api_secret: API secret for authentication
     :param source: Source identifier (e.g., "sdk", "sdk-async")
     :param client_id: Optional client ID to include in headers
     :param extra_headers: Optional dictionary of additional headers
+    :param access_token: Optional user access token, or a zero-argument callable returning one
     :return: Dictionary of headers
     """
-    headers = {
-        "api_key": api_key,
-        "api_secret": api_secret,
-        "source": source,
-        "origin": constants.ALLOWED_ORIGINS,
-    }
+    token = access_token() if callable(access_token) else access_token
+    if token:
+        headers = {"Authorization": f"Bearer {token}"}
+    else:
+        headers = {"api_key": api_key, "api_secret": api_secret}
+    headers["source"] = source
+    headers["origin"] = constants.ALLOWED_ORIGINS
 
     if client_id:
         headers["client_id"] = str(client_id)
+        if token:
+            # For token callers the gateway's role check reads the workspace from `clientid`.
+            headers["clientid"] = str(client_id)
 
     if extra_headers:
         headers.update(extra_headers)
 
-    return headers
+    return {name: value for name, value in headers.items() if value is not None}
+
+
+def caller_id(client: Any) -> Optional[str]:
+    """
+    The identity the API expects in ``email_id``: the signed-in user's email for a
+    token client, otherwise the API key (what the SDK has always sent).
+    """
+    return getattr(client, "email_id", None) or getattr(client, "api_key", None)
 
 
 def validate_required_params(params: Dict[str, Any], required_list: list) -> None:

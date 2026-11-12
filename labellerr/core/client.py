@@ -25,9 +25,14 @@ class LabellerrClient:
         enable_connection_pooling=True,
         pool_connections=10,
         pool_maxsize=20,
+        access_token=None,
+        email_id=None,
     ):
         """
         Initializes the LabellerrClient with API credentials.
+
+        Authenticate with an API key and secret, or with a user access token
+        (``access_token``; see ``from_access_token``).
 
         :param api_key: The API key for authentication.
         :param api_secret: The API secret for authentication.
@@ -35,10 +40,15 @@ class LabellerrClient:
         :param enable_connection_pooling: Whether to enable connection pooling
         :param pool_connections: Number of connection pools to cache
         :param pool_maxsize: Maximum number of connections to save in the pool
+        :param access_token: A user access token, or a zero-argument callable returning
+            one. When set it is sent instead of the API key and secret.
+        :param email_id: The signed-in user's email (used with ``access_token``).
         """
         self.api_key = api_key
         self.api_secret = api_secret
         self.client_id = client_id
+        self.access_token = access_token
+        self.email_id = email_id
         self.base_url = constants.BASE_URL
         self._session = None
         self._enable_pooling = enable_connection_pooling
@@ -53,6 +63,25 @@ class LabellerrClient:
 
         # Initialize Users handler for user-related operations
         self.users = LabellerrUsers(self)
+
+    @classmethod
+    def from_access_token(cls, access_token, client_id, email_id=None, **kwargs):
+        """
+        Create a client that authenticates as a signed-in user.
+
+        :param access_token: The user's access token, or a zero-argument callable returning one.
+        :param client_id: The client ID (workspace) to act in.
+        :param email_id: The user's email.
+        :param kwargs: Any other LabellerrClient argument (connection pooling options).
+        """
+        return cls(
+            None,
+            None,
+            client_id,
+            access_token=access_token,
+            email_id=email_id,
+            **kwargs,
+        )
 
     def _setup_session(self):
         """
@@ -187,6 +216,7 @@ class LabellerrClient:
                 api_secret=self.api_secret,
                 client_id=self.client_id,
                 extra_headers=extra_headers,
+                access_token=self.access_token,
             )
             # Merge with any existing headers in kwargs
             if "headers" in kwargs:

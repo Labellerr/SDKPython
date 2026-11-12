@@ -402,7 +402,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 response = self.client.make_request(
                     "POST",
                     url,
-                    extra_headers={"email_id": self.client.api_key},
+                    extra_headers={"email_id": client_utils.caller_id(self.client)},
                     request_id=request_uuid,
                     handle_response=False,
                     data=payload,

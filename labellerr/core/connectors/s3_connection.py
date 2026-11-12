@@ -29,7 +29,8 @@ class S3Connection(LabellerrConnection):
             api_key=client.api_key,
             api_secret=client.api_secret,
             client_id=client.client_id,
-            extra_headers={"email_id": client.api_key},
+            extra_headers={"email_id": client_utils.caller_id(client)},
+            access_token=getattr(client, "access_token", None),
         )
 
         aws_credentials_json = json.dumps(
@@ -86,7 +87,8 @@ class S3Connection(LabellerrConnection):
             api_key=client.api_key,
             api_secret=client.api_secret,
             client_id=client.client_id,
-            extra_headers={"email_id": client.api_key},
+            extra_headers={"email_id": client_utils.caller_id(client)},
+            access_token=getattr(client, "access_token", None),
         )
 
         creds_payload = json.dumps(

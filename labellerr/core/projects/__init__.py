@@ -68,6 +68,7 @@ def create_project(
         extra_headers={
             "Content-Type": "application/json",
         },
+        access_token=getattr(client, "access_token", None),
     )
 
     response = client.make_request(
