@@ -10,7 +10,6 @@ import requests
 
 from labellerr.core.files.base import LabellerrFile, LabellerrFileMeta
 
-from .. import constants
 from ..exceptions import LabellerrError
 
 if TYPE_CHECKING:
@@ -52,7 +51,7 @@ class LabellerrVideoFile(LabellerrFile):
                 frame_end = self.total_frames
 
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/data/video_frames"
+            url = f"{self.client.base_url}/data/video_frames"
 
             params = {
                 "dataset_id": self.dataset_id,
@@ -69,6 +68,8 @@ class LabellerrVideoFile(LabellerrFile):
 
             return response
 
+        except LabellerrError:
+            raise
         except Exception as e:
             raise LabellerrError(f"Failed to fetch video frames data: {str(e)}")
 
@@ -183,6 +184,8 @@ class LabellerrVideoFile(LabellerrFile):
 
             return result
 
+        except LabellerrError:
+            raise
         except Exception as e:
             raise LabellerrError(f"Failed to download video frames: {str(e)}")
 
@@ -330,6 +333,8 @@ class LabellerrVideoFile(LabellerrFile):
             if os.path.exists(cleanup_folder):
                 shutil.rmtree(cleanup_folder)
 
+            if isinstance(e, LabellerrError):
+                raise
             raise LabellerrError(f"Failed in video processing: {str(e)}")
 
 

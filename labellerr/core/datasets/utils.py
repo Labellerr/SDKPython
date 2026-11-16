@@ -4,7 +4,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
-from .. import client_utils, constants, gcs
+from .. import constants, gcs
 from ..exceptions import LabellerrError
 from ..client import LabellerrClient
 
@@ -95,19 +95,19 @@ def connect_local_files(
     :param connection_id: The ID of the connection.
     :return: The response from the API.
     """
-    url = f"{constants.BASE_URL}/connectors/connect/local?client_id={client_id}"
-    headers = client_utils.build_headers(
-        api_key=client.api_key,
-        api_secret=client.api_secret,
-        client_id=client_id,
-        access_token=getattr(client, "access_token", None),
-    )
-
+    url = f"{client.base_url}/connectors/connect/local?client_id={client_id}"
     body = {"file_names": file_names}
     if connection_id is not None:
         body["temporary_connection_id"] = connection_id
 
-    return client_utils.request("POST", url, headers=headers, json=body)
+    # This helper takes its own client_id; send that one rather than the client's
+    return client.make_request(
+        "POST",
+        url,
+        extra_headers={"client_id": str(client_id)} if client_id is not None else None,
+        json=body,
+        timeout=(30, 300),
+    )
 
 
 def upload_files(

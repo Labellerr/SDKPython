@@ -66,23 +66,101 @@ Replace `'your_api_key'` and `'your_api_secret'` with your actual API credential
 
 ---
 
-### Sign in with a user token
+### Sign in with an API key or a user token
 
-Besides an API key and secret, the client can act as a signed-in Labellerr user. Pass the user's access token (from Labellerr's Auth0 login, audience `https://api.labellerr.com/`):
+The client authenticates in one of two ways. Use the API key and secret shown above, or a user access token to act as a signed-in Labellerr user:
 
 ```python
-from labellerr.core import LabellerrClient
+from labellerr import LabellerrClient
 
 client = LabellerrClient.from_access_token(
-    access_token="<user access token>",
-    client_id="<workspace client id>",
+    "<user access token>",
+    client_id="<client id>",
     email_id="user@example.com",
 )
 ```
 
-`access_token` may also be a zero-argument function that returns the current token, for long-running programs that refresh it. Requests are then authorised as that user, with their roles and project membership.
+Pass exactly one of `api_key` and `api_secret`, `access_token`, or `credentials=`. The `credentials=` argument takes an `ApiKeyCredentials(api_key, api_secret)` or a `BearerTokenCredentials(token)` object. Missing or empty credentials, or more than one kind, raise `AuthenticationError` when the client is created.
 
-Two environment variables change where the SDK sends requests. `LABELLERR_BASE_URL` sets the API base URL (default `https://api.labellerr.com`). `LABELLERR_ORIGIN` sets the `origin` header (default `https://pro.labellerr.com`); a service that calls the API with user tokens must set its own origin, otherwise its requests replace the user's browser session.
+`access_token` may also be a zero-argument function that returns the token. The client calls it for every request, so a long-running program can return a refreshed token. The function must be a normal function, not `async def`; an async function raises `AuthenticationError`.
+
+#### Settings and the default origin
+
+Pass a `Settings` object as `settings=` to set `base_url`, `origin`, `source` (default `sdk`) or `user_agent`:
+
+```python
+from labellerr import LabellerrClient, Settings
+
+settings = Settings(base_url="https://api.labellerr.com", origin="https://sdk.labellerr.com")
+client = LabellerrClient.from_access_token("<user access token>", client_id="<client id>", settings=settings)
+```
+
+A `Settings` you build is used as given. With no `settings=`, the client reads these variables when it is created, not at import time:
+
+- `LABELLERR_BASE_URL`: the API base URL (default `https://api.labellerr.com`).
+- `LABELLERR_ORIGIN`: the `origin` header. An empty value is ignored. When set, it applies to both kinds of client.
+
+With no origin set, an API-key client sends `https://pro.labellerr.com`, the web app's origin. A token client sends `https://sdk.labellerr.com`. The gateway keeps one session per email and origin, so a token client that sent the web app's origin would sign the user out of the web app.
+
+#### Errors
+
+Failed API calls raise a subclass of `LabellerrError`, chosen by HTTP status:
+
+| Exception | Status | Raised for |
+| --- | --- | --- |
+| `AuthenticationError` | 401 | Credentials are missing or invalid, or rejected before the request is sent |
+| `PermissionDeniedError` | 403 | The caller may not perform this action |
+| `NotFoundError` | 404 | The resource does not exist |
+| `RateLimitError` | 429 | Too many requests |
+| `ServerError` | 5xx | The API failed to handle the request |
+
+Each error has `status_code`, `error_code` (the gateway's code, such as `TOKEN_INVALID`), `request_id` and `response_body` (the parsed JSON, or the text). They are `None` for errors raised in the client. `RateLimitError` also has `retry_after`, the seconds from the `Retry-After` header, or `None`.
+
+```python
+import time
+from labellerr import LabellerrError, RateLimitError
+
+url = f"{client.base_url}/<path>"
+try:
+    result = client.make_request("GET", url, params={"client_id": "<client id>"})
+except RateLimitError as e:
+    time.sleep(e.retry_after or 5)
+except LabellerrError as e:
+    print(e.status_code, e.error_code, e.request_id)
+```
+
+#### Retries
+
+The sync client retries on its own session, which it creates when connection pooling is on. It retries up to 3 times, with backoff, on 429, 500, 502, 503 and 504 responses. Only GET, HEAD, PUT, DELETE and OPTIONS are retried on those responses. POST is not, so a create call cannot run twice. Connection-establishment failures are retried for every method. When retries run out, the last response becomes the error above.
+
+The async client does not retry. A session passed with `session=` gets no retry policy.
+
+#### Sharing a connection pool
+
+Pass your own `requests.Session` as `session=` to share a pool with other code:
+
+```python
+import requests
+
+session = requests.Session()
+client = LabellerrClient(api_key, api_secret, client_id, session=session)
+
+client.close()   # leaves the session open
+session.close()  # you close it
+```
+
+The client uses the session as given. It mounts no retry adapters on it and never closes it.
+
+#### Async client
+
+`AsyncLabellerrClient` takes the same `api_key`, `api_secret`, `access_token`, `credentials=` and `settings=` arguments. It has no `client_id` or `email_id` argument; its methods take the client ID as a parameter. A token provider must also be a normal function.
+
+```python
+from labellerr import AsyncLabellerrClient
+
+async with AsyncLabellerrClient.from_access_token("<user access token>") as client:
+    ...
+```
 
 ---
 

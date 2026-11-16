@@ -1,9 +1,12 @@
-import os
-
-# Both can be overridden from the environment, e.g. to target a non-production gateway.
-_DEFAULT_BASE_URL = "https://api.labellerr.com"
-BASE_URL = (os.environ.get("LABELLERR_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
-ALLOWED_ORIGINS = os.environ.get("LABELLERR_ORIGIN") or "https://pro.labellerr.com"
+# Defaults only. The environment (LABELLERR_BASE_URL / LABELLERR_ORIGIN) is read when a
+# client is created, by ``labellerr.core.settings.Settings.from_env``; requests use
+# ``client.base_url`` and the client's settings, not these constants.
+DEFAULT_BASE_URL = "https://api.labellerr.com"
+# Origin sent with API-key credentials (the web app's origin).
+DEFAULT_ORIGIN = "https://pro.labellerr.com"
+# Origin sent with a user access token. The gateway keeps one session per email and
+# origin, so a token client on the web app's origin would sign the user out of it.
+TOKEN_DEFAULT_ORIGIN = "https://sdk.labellerr.com"
 
 
 FILE_BATCH_SIZE = 15 * 1024 * 1024  # 15MB
@@ -45,3 +48,21 @@ OPTION_TYPE_LIST = [
     "audio",
 ]
 cdn_server_address = "cdn-951134552678.us-central1.run.app:443"
+
+
+def __getattr__(name):
+    """
+    Legacy names ``BASE_URL`` and ``ALLOWED_ORIGINS``, kept for external callers.
+
+    They resolve from the environment each time they are read (nothing is read at
+    import). The SDK itself uses ``DEFAULT_BASE_URL`` / ``DEFAULT_ORIGIN``.
+    """
+    import os
+
+    if name == "BASE_URL":
+        value = (os.environ.get("LABELLERR_BASE_URL") or "").strip().rstrip("/")
+        return value or DEFAULT_BASE_URL
+    if name == "ALLOWED_ORIGINS":
+        value = (os.environ.get("LABELLERR_ORIGIN") or "").strip()
+        return value or DEFAULT_ORIGIN
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

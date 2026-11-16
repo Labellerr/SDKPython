@@ -41,7 +41,7 @@ def create_dataset_from_connection(
     :return: The LabellerrDataset instance.
     """
     unique_id = str(uuid.uuid4())
-    url = f"{constants.BASE_URL}/datasets/create?client_id={client.client_id}&uuid={unique_id}"
+    url = f"{client.base_url}/datasets/create?client_id={client.client_id}&uuid={unique_id}"
 
     payload = json.dumps(
         {
@@ -123,7 +123,7 @@ def delete_dataset(client: "LabellerrClient", dataset_id: str):
     :raises LabellerrError: If the deletion fails
     """
     unique_id = str(uuid.uuid4())
-    url = f"{constants.BASE_URL}/datasets/delete?client_id={client.client_id}&uuid={unique_id}"
+    url = f"{client.base_url}/datasets/delete?client_id={client.client_id}&uuid={unique_id}"
 
     response = client.make_request(
         "POST",
@@ -178,7 +178,7 @@ def list_datasets(
         while has_more:
             unique_id = str(uuid.uuid4())
             url = (
-                f"{constants.BASE_URL}/datasets/list?client_id={client.client_id}&data_type={datatype}&permission_level={scope}"
+                f"{client.base_url}/datasets/list?client_id={client.client_id}&data_type={datatype}&permission_level={scope}"
                 f"&page_size={actual_page_size}&uuid={unique_id}"
             )
 
@@ -205,7 +205,7 @@ def list_datasets(
     else:
         unique_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/datasets/list?client_id={client.client_id}&data_type={datatype}&permission_level={scope}"
+            f"{client.base_url}/datasets/list?client_id={client.client_id}&data_type={datatype}&permission_level={scope}"
             f"&page_size={page_size}&uuid={unique_id}"
         )
 

@@ -3,63 +3,75 @@ Shared utilities for both sync and async Labellerr clients.
 """
 
 import uuid
-from typing import Any, Dict, Optional
-
-import requests
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from typing import Any, Dict, Mapping, Optional, Type
 
 from . import constants
-from .exceptions import LabellerrError
+from .credentials import Credentials
+from .exceptions import (
+    AuthenticationError,
+    LabellerrError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    ServerError,
+)
+from .settings import Settings
+
+
+def _set_header(headers: Dict[str, Any], name: str, value: Any) -> None:
+    """Set a header, replacing any existing header of the same name in another case."""
+    for existing in [key for key in headers if key.lower() == name.lower()]:
+        del headers[existing]
+    headers[name] = value
+
+
+def merge_headers(
+    headers: Dict[str, Any], extra_headers: Optional[Mapping[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Merge ``extra_headers`` over ``headers``, matching names case-insensitively so
+    that, e.g., ``Origin`` replaces ``origin`` instead of sending both. Headers whose
+    value is None are dropped (so a None in ``extra_headers`` removes a header).
+
+    :param headers: Base headers (not modified)
+    :param extra_headers: Headers to add or replace
+    :return: A new dictionary of headers
+    """
+    merged = dict(headers)
+    if extra_headers:
+        for name, value in extra_headers.items():
+            _set_header(merged, name, value)
+    return {name: value for name, value in merged.items() if value is not None}
 
 
 def build_headers(
-    api_key: Optional[str] = None,
-    api_secret: Optional[str] = None,
-    source: str = "sdk",
-    client_id: Optional[str] = None,
-    extra_headers: Optional[Dict[str, str]] = None,
-    access_token: Any = None,
+    credentials: Credentials,
+    settings: Settings,
+    client_id: Optional[Any] = None,
+    extra_headers: Optional[Mapping[str, Any]] = None,
+    source: Optional[str] = None,
 ) -> Dict[str, str]:
     """
-    Builds standard headers for API requests.
+    Builds the headers of an API request, for the sync and the async client.
 
-    Authentication is either an API key and secret, or a user access token. When
-    ``access_token`` is given it is sent as ``Authorization: Bearer <token>`` and the
-    key and secret are not sent.
-
-    :param api_key: API key for authentication
-    :param api_secret: API secret for authentication
-    :param source: Source identifier (e.g., "sdk", "sdk-async")
-    :param client_id: Optional client ID to include in headers
-    :param extra_headers: Optional dictionary of additional headers
-    :param access_token: Optional user access token, or a zero-argument callable returning one
+    :param credentials: The client's credentials (produce the authentication headers)
+    :param settings: The client's settings (origin, source and User-Agent)
+    :param client_id: Optional client ID, sent as the ``client_id`` header
+    :param extra_headers: Optional additional headers; names are matched
+        case-insensitively and a None value removes a header
+    :param source: ``source`` header; defaults to ``settings.source``
     :return: Dictionary of headers
+    :raises AuthenticationError: If the credentials cannot produce a token
     """
-    token = access_token() if callable(access_token) else access_token
-    if token:
-        headers = {"Authorization": f"Bearer {token}"}
-    else:
-        headers = {"api_key": api_key, "api_secret": api_secret}
-    headers["source"] = source
-    headers["origin"] = constants.ALLOWED_ORIGINS
-
-    if client_id:
+    headers: Dict[str, Any] = dict(credentials.auth_headers())
+    headers["source"] = source or settings.source
+    headers["origin"] = settings.resolve_origin(credentials.kind)
+    headers["User-Agent"] = settings.resolve_user_agent()
+    if client_id is not None and client_id != "":
         headers["client_id"] = str(client_id)
-        if token:
-            # For token callers the gateway's role check reads the workspace from `clientid`.
-            headers["clientid"] = str(client_id)
-
-    if extra_headers:
-        headers.update(extra_headers)
-
-    return {name: value for name, value in headers.items() if value is not None}
-
-
-def caller_id(client: Any) -> Optional[str]:
-    """
-    The identity the API expects in ``email_id``: the signed-in user's email for a
-    token client, otherwise the API key (what the SDK has always sent).
-    """
-    return getattr(client, "email_id", None) or getattr(client, "api_key", None)
+    return merge_headers(headers, extra_headers)
 
 
 def validate_required_params(params: Dict[str, Any], required_list: list) -> None:
@@ -162,10 +174,154 @@ def generate_request_id() -> str:
     return str(uuid.uuid4())
 
 
+# Gateway error codes that decide the error class regardless of the HTTP status.
+_ERROR_CODE_CLASSES: Dict[str, Type[LabellerrError]] = {
+    "INVALID_API_KEY": AuthenticationError,
+    "TOKEN_INVALID": AuthenticationError,
+    "SESSION_REVOKED": AuthenticationError,
+    "NOT_A_MEMBER": PermissionDeniedError,
+    "RATE_LIMITED": RateLimitError,
+}
+
+_STATUS_CLASSES: Dict[int, Type[LabellerrError]] = {
+    401: AuthenticationError,
+    403: PermissionDeniedError,
+    404: NotFoundError,
+    429: RateLimitError,
+}
+
+
+def _gateway_error_code(body: Any) -> Optional[str]:
+    """The gateway's ``error_code``, at the top level of the body or under ``error``."""
+    if not isinstance(body, dict):
+        return None
+    code = body.get("error_code")
+    if not isinstance(code, str) and isinstance(body.get("error"), dict):
+        code = body["error"].get("error_code")
+    return code if isinstance(code, str) and code else None
+
+
+def _header_value(headers: Any, name: str) -> Optional[str]:
+    """Case-insensitive header lookup that tolerates any mapping (or None)."""
+    if not headers:
+        return None
+    try:
+        items = list(headers.items())
+    except Exception:
+        return None
+    for key, value in items:
+        if isinstance(key, str) and key.lower() == name.lower():
+            return value if isinstance(value, str) else str(value)
+    return None
+
+
+def parse_retry_after(value: Optional[str]) -> Optional[float]:
+    """
+    Parse a ``Retry-After`` header value into seconds.
+
+    :param value: Delay in seconds (integer or decimal), or an HTTP date
+    :return: Seconds to wait (never negative), or None if it cannot be parsed
+    """
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            return None
+        if when is None:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = (when - datetime.now(timezone.utc)).total_seconds()
+    if seconds != seconds or seconds in (float("inf"), float("-inf")):  # NaN / inf
+        return None
+    return max(0.0, seconds)
+
+
+def error_from_response(
+    status_code: int,
+    body: Any,
+    headers: Optional[Mapping[str, Any]] = None,
+    request_id: Optional[str] = None,
+) -> LabellerrError:
+    """
+    Map a failed API response to a ``LabellerrError`` (or subclass). The one place
+    the SDK does this; the sync and async clients both call it. It does no I/O.
+
+    The class comes from the gateway's ``error_code`` when it is a known one, else
+    from the status: 401 ``AuthenticationError``, 403 ``PermissionDeniedError``,
+    404 ``NotFoundError``, 429 ``RateLimitError``, 5xx ``ServerError``, anything else
+    ``LabellerrError``.
+
+    ``args[0]`` keeps the shape the SDK has always raised: for a 4xx
+    ``{"error": body, "code": status}``; otherwise ``{"status": "internal server
+    error", "message": ..., "request_id": ..., "error": body}`` (``error`` only when
+    there is a body).
+
+    :param status_code: HTTP status
+    :param body: Parsed JSON body (dict/list), or the response text when not JSON
+    :param headers: Response headers (for ``Retry-After``)
+    :param request_id: Request tracking ID (generated for a 5xx when not given)
+    :return: The error, to be raised by the caller
+    """
+    error_code = _gateway_error_code(body)
+    error_class = _ERROR_CODE_CLASSES.get(error_code or "")
+    if error_class is None:
+        if status_code in _STATUS_CLASSES:
+            error_class = _STATUS_CLASSES[status_code]
+        elif isinstance(status_code, int) and status_code >= 500:
+            error_class = ServerError
+        else:
+            error_class = LabellerrError
+
+    if isinstance(status_code, int) and 400 <= status_code < 500:
+        payload: Dict[str, Any] = {"error": body, "code": status_code}
+    else:
+        request_id = request_id or generate_request_id()
+        payload = {
+            "status": "internal server error",
+            "message": "Please contact support with the request tracking id",
+            "request_id": request_id,
+        }
+        if body is not None and body != "":
+            payload["error"] = body
+
+    details: Dict[str, Any] = {
+        "status_code": status_code,
+        "error_code": error_code,
+        "request_id": request_id,
+        "response_body": body,
+    }
+    if issubclass(error_class, RateLimitError):
+        details["retry_after"] = parse_retry_after(
+            _header_value(headers, "Retry-After")
+        )
+    return error_class(payload, **details)
+
+
+def response_body(response: Any) -> Any:
+    """
+    The body of a ``requests`` response: parsed JSON, or the text when not JSON.
+
+    :param response: requests.Response object
+    :return: Parsed JSON, or text
+    """
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
+
+
 def handle_response(response, request_id=None, success_codes=None):
     """
-    Legacy method for handling response objects directly.
-    Kept for backward compatibility with special response handlers.
+    Return the JSON body of a successful ``requests`` response, or raise the error
+    ``error_from_response`` maps it to.
 
     :param response: requests.Response object
     :param request_id: Optional request tracking ID
@@ -181,66 +337,15 @@ def handle_response(response, request_id=None, success_codes=None):
             return response.json()
         except ValueError:
             # Handle cases where response is successful but not JSON
-            raise LabellerrError(f"Expected JSON response but got: {response.text}")
-    elif 400 <= response.status_code < 500:
-        try:
-            error_data = response.json()
-            raise LabellerrError({"error": error_data, "code": response.status_code})
-        except ValueError:
-            raise LabellerrError({"error": response.text, "code": response.status_code})
-    else:
-        raise LabellerrError(
-            {
-                "status": "internal server error",
-                "message": "Please contact support with the request tracking id",
-                "request_id": request_id or str(uuid.uuid4()),
-            }
-        )
-
-
-def request(method, url, request_id=None, success_codes=None, **kwargs):
-    """
-    Make HTTP request and handle response in a single method.
-
-    :param method: HTTP method (GET, POST, etc.)
-    :param url: Request URL
-    :param request_id: Optional request tracking ID (auto-generated if not provided)
-    :param success_codes: Optional list of success status codes (default: [200, 201])
-    :param kwargs: Additional arguments to pass to requests
-    :return: JSON response data for successful requests
-    :raises LabellerrError: For non-successful responses
-    """
-    # Generate request_id if not provided
-    if request_id is None:
-        request_id = str(uuid.uuid4())
-
-    # Set default timeout if not provided
-    kwargs.setdefault("timeout", (30, 300))  # connect, read
-
-    # Make the request[
-    response = requests.request(method, url, **kwargs)
-
-    # Handle the response
-    if success_codes is None:
-        success_codes = [200, 201]
-
-    if response.status_code in success_codes:
-        try:
-            return response.json()
-        except ValueError:
-            # Handle cases where response is successful but not JSON
-            raise LabellerrError(f"Expected JSON response but got: {response.text}")
-    elif 400 <= response.status_code < 500:
-        try:
-            error_data = response.json()
-            raise LabellerrError({"error": error_data, "code": response.status_code})
-        except ValueError:
-            raise LabellerrError({"error": response.text, "code": response.status_code})
-    else:
-        raise LabellerrError(
-            {
-                "status": "internal server error",
-                "message": "Please contact support with the request tracking id",
-                "request_id": request_id,
-            }
-        )
+            raise LabellerrError(
+                f"Expected JSON response but got: {response.text}",
+                status_code=response.status_code,
+                request_id=request_id,
+                response_body=response.text,
+            )
+    raise error_from_response(
+        response.status_code,
+        response_body(response),
+        getattr(response, "headers", None),
+        request_id,
+    )

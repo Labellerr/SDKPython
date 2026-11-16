@@ -6,7 +6,6 @@ import uuid
 from abc import ABCMeta
 from typing import Dict, Any, Generator, Optional, TYPE_CHECKING
 
-from .. import client_utils, constants
 from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDError
 from ..client import LabellerrClient
 
@@ -37,7 +36,7 @@ class LabellerrDatasetMeta(ABCMeta):
 
         unique_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/datasets/{dataset_id}?client_id={client.client_id}"
+            f"{client.base_url}/datasets/{dataset_id}?client_id={client.client_id}"
             f"&uuid={unique_id}"
         )
 
@@ -146,7 +145,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         def get_dataset_status():
             unique_id = str(uuid.uuid4())
             url = (
-                f"{constants.BASE_URL}/datasets/{self.dataset_id}?client_id={self.client.client_id}"
+                f"{self.client.base_url}/datasets/{self.dataset_id}?client_id={self.client.client_id}"
                 f"&uuid={unique_id}"
             )
 
@@ -203,7 +202,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
 
         while True:
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/search/files/all"
+            url = f"{self.client.base_url}/search/files/all"
             params = {
                 "sort_by": "created_at",
                 "sort_order": "desc",
@@ -259,7 +258,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         """
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/connectors/datasets/sync?uuid={unique_id}&client_id={self.client.client_id}"
+        url = f"{self.client.base_url}/connectors/datasets/sync?uuid={unique_id}&client_id={self.client.client_id}"
 
         payload = json.dumps(
             {
@@ -268,7 +267,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
                 "dataset_id": self.dataset_id,
                 "path": path,
                 "data_type": data_type,
-                "email_id": client_utils.caller_id(self.client),
+                "email_id": self.client.caller_identity,
                 "connection_id": connection.connection_id,
             }
         )
@@ -292,7 +291,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         assert is_multimodal is True, "Disabling multimodal indexing is not supported"
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/search/multimodal_index?client_id={self.client.client_id}"
+        url = f"{self.client.base_url}/search/multimodal_index?client_id={self.client.client_id}"
 
         payload = json.dumps(
             {

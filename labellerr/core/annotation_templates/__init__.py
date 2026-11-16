@@ -5,11 +5,9 @@ from ..schemas.annotation_templates import (
     Option,
     DatasetDataType,
 )
-from .. import constants
 from ..client import LabellerrClient
 import uuid
 from typing import List
-
 
 __all__ = [
     "LabellerrAnnotationTemplate",
@@ -54,7 +52,7 @@ def create_template(
 
     payload = {"template_name": params.template_name, "questions": questions_data}
     url = (
-        f"{constants.BASE_URL}/annotations/create_template?client_id={client.client_id}&data_type={params.data_type.value}"
+        f"{client.base_url}/annotations/create_template?client_id={client.client_id}&data_type={params.data_type.value}"
         f"&uuid={unique_id}"
     )
 
@@ -83,7 +81,7 @@ def list_templates(
     """
     unique_id = str(uuid.uuid4())
     url = (
-        f"{constants.BASE_URL}/annotations/list_questions_templates?client_id={client.client_id}&data_type={data_type.value}"
+        f"{client.base_url}/annotations/list_questions_templates?client_id={client.client_id}&data_type={data_type.value}"
         f"&uuid={unique_id}"
     )
 

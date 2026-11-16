@@ -3,7 +3,6 @@
 import uuid
 from abc import ABCMeta
 from typing import Dict
-from .. import client_utils, constants
 from ..schemas import ConnectionType, DatasetDataType
 from ..exceptions import InvalidConnectionError
 
@@ -25,7 +24,7 @@ class LabellerrConnectionMeta(ABCMeta):
 
         assert connection_id, "Connection ID is can't be empty"
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/connectors/connections/{connection_id}/details"
+        url = f"{client.base_url}/connectors/connections/{connection_id}/details"
 
         params = {"client_id": client.client_id, "uuid": unique_id}
 
@@ -104,16 +103,8 @@ class LabellerrConnection(metaclass=LabellerrConnectionMeta):
     ):
         request_id = str(uuid.uuid4())
         test_connection_url = (
-            f"{constants.BASE_URL}/connectors/connections/test"
+            f"{self.client.base_url}/connectors/connections/test"
             f"?client_id={self.client.client_id}&uuid={request_id}"
-        )
-
-        headers = client_utils.build_headers(
-            api_key=self.client.api_key,
-            api_secret=self.client.api_secret,
-            client_id=self.client.client_id,
-            extra_headers={"email_id": client_utils.caller_id(self.client)},
-            access_token=getattr(self.client, "access_token", None),
         )
 
         # Test endpoint also expects multipart/form-data format
@@ -124,11 +115,11 @@ class LabellerrConnection(metaclass=LabellerrConnectionMeta):
             "connection_id": (None, self.connection_id),
             "data_type": (None, data_type.value),
         }
-        response = client_utils.request(
+        response = self.client.make_request(
             "POST",
             test_connection_url,
-            headers=headers,
             files=test_request,
             request_id=request_id,
+            timeout=(30, 300),
         )
         return response.get("response", {})

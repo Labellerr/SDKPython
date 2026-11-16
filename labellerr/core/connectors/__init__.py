@@ -1,7 +1,6 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from .. import client_utils, constants
 from ...schemas import AWSConnectionParams, ConnectionType, ConnectorType
 from ...schemas import GCSConnectionParams
 from .connections import LabellerrConnection
@@ -41,7 +40,7 @@ def list_connections(
     """
 
     unique_id = str(uuid.uuid4())
-    url = f"{constants.BASE_URL}/connectors/connections/list"
+    url = f"{client.base_url}/connectors/connections/list"
 
     params = {
         "client_id": client.client_id,
@@ -50,11 +49,7 @@ def list_connections(
     }
     if connection_type:
         params["connection_type"] = connection_type
-    extra_headers = {"email_id": client_utils.caller_id(client)}
-
-    response = client.make_request(
-        "GET", url, extra_headers=extra_headers, request_id=unique_id, params=params
-    )
+    response = client.make_request("GET", url, request_id=unique_id, params=params)
     return [
         LabellerrConnection(client, connection["connection_id"])
         for connection in response.get("response", [])
@@ -69,16 +64,13 @@ def delete_connection(client: "LabellerrClient", connection_id: str):
     """
     request_id = str(uuid.uuid4())
     url = (
-        f"{constants.BASE_URL}/connectors/connections/delete"
+        f"{client.base_url}/connectors/connections/delete"
         f"?client_id={client.client_id}&uuid={request_id}"
     )
-
-    extra_headers = {"email_id": client_utils.caller_id(client)}
 
     response = client.make_request(
         "POST",
         url,
-        extra_headers=extra_headers,
         request_id=request_id,
         json={"connection_id": connection_id},
     )

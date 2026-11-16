@@ -1,4 +1,3 @@
-from .. import constants
 from ..client import LabellerrClient
 from ..exceptions import InvalidAnnotationTemplateError
 import uuid
@@ -10,7 +9,7 @@ class LabellerrAnnotationTemplate:
         """Get annotation template from Labellerr API"""
         unique_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/annotations/get_template?template_id={annotation_template_id}&client_id={client.client_id}"
+            f"{client.base_url}/annotations/get_template?template_id={annotation_template_id}&client_id={client.client_id}"
             f"&uuid={unique_id}"
         )
 

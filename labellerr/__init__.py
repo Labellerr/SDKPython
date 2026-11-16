@@ -2,22 +2,35 @@
 
 from .async_client import AsyncLabellerrClient
 from .client import LabellerrClient
-from .core.exceptions import LabellerrError
+from .core.credentials import ApiKeyCredentials, BearerTokenCredentials, Credentials
+from .core.exceptions import (
+    AuthenticationError,
+    LabellerrError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    ServerError,
+    JobTimeoutError,
+)
 
-# Get version from package metadata
-try:
-    import importlib.metadata as _importlib_metadata
-except ImportError:  # Python < 3.8
-    import importlib_metadata as _importlib_metadata  # type: ignore[no-redef]
-
-try:
-    __version__ = _importlib_metadata.version("labellerr-sdk")
-except Exception:
-    __version__ = "unknown"
+# Version from package metadata (computed once, in labellerr.core.settings, which
+# also builds the User-Agent from it).
+from .core.settings import DEFAULT_USER_AGENT, Settings, __version__
 
 __all__ = [
     "__version__",
     "LabellerrClient",
     "AsyncLabellerrClient",
     "LabellerrError",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "NotFoundError",
+    "RateLimitError",
+    "ServerError",
+    "JobTimeoutError",
+    "Credentials",
+    "ApiKeyCredentials",
+    "BearerTokenCredentials",
+    "Settings",
+    "DEFAULT_USER_AGENT",
 ]
