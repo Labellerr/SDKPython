@@ -35,6 +35,9 @@ jobs:
             ruff check .
           fi
 
+      - name: Run type check
+        run: make typecheck
+
       - name: Run formatting check
         run: |
           if grep -q "^format:" Makefile; then

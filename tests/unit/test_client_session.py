@@ -54,7 +54,7 @@ def test_mounted_retry_policy():
             assert "POST" not in retry.allowed_methods
             assert set(retry.status_forcelist) == {429, 500, 502, 503, 504}
             assert retry.raise_on_status is False
-            assert retry.respect_retry_after_header is False
+            assert retry.respect_retry_after_header is True
             assert retry.total == 3
     finally:
         client.close()
@@ -207,10 +207,88 @@ def test_make_request_merges_extra_and_explicit_headers(client):
     assert [k for k in headers if k.lower() == "origin"] == ["Origin"]
 
 
-def test_make_request_without_client_id_still_authenticates():
-    client = LabellerrClient.from_access_token(
-        "tok", None, enable_connection_pooling=False
+def test_make_request_sends_the_request_id_as_correlation_id(client):
+    _, call = _request_kwargs(client, "GET", URL, request_id="rid-1")
+    assert call.kwargs["headers"]["x-correlation-id"] == "rid-1"
+
+
+def test_generated_request_id_is_sent_and_matches_the_error():
+    sent = {}
+
+    def fake_request(method, url, **kwargs):
+        sent.update(kwargs["headers"])
+        response = _Response(500, {"message": "boom"})
+        response.request = MagicMock(headers=kwargs["headers"])
+        return response
+
+    session = MagicMock(spec=requests.Session)
+    session.request.side_effect = fake_request
+    client = LabellerrClient("k", "s", "c", session=session)
+
+    with pytest.raises(ServerError) as info:
+        client.make_request("GET", URL)
+
+    assert sent["x-correlation-id"]
+    assert info.value.request_id == sent["x-correlation-id"]
+    assert info.value.args[0]["request_id"] == sent["x-correlation-id"]
+
+
+def test_raw_response_error_reports_the_sent_correlation_id(client):
+    response = _Response(500, {"message": "boom"})
+    response.request = MagicMock(headers={"x-correlation-id": "rid-2"})
+    with pytest.raises(ServerError) as info:
+        client.handle_upload_response(response)
+    assert info.value.request_id == "rid-2"
+
+
+# --- Backoff and Retry-After -------------------------------------------------------
+
+
+def _retried(retry, status, headers=None):
+    from urllib3.response import HTTPResponse
+
+    return retry.increment(
+        "GET", URL, response=HTTPResponse(status=status, headers=headers or {})
     )
-    _, call = _request_kwargs(client, "GET", URL)
-    assert call.kwargs["headers"]["Authorization"] == "Bearer tok"
-    assert "client_id" not in call.kwargs["headers"]
+
+
+def test_first_retry_backs_off_with_jitter():
+    once = _retried(build_retry(), 503)
+    twice = _retried(once, 503)
+    first = [once.get_backoff_time() for _ in range(50)]
+    second = [twice.get_backoff_time() for _ in range(50)]
+    assert all(1.0 <= b <= 1.5 for b in first)
+    assert all(2.0 <= b <= 3.0 for b in second)
+    assert len(set(first)) > 1  # jittered
+
+
+def test_backoff_is_capped():
+    from labellerr.core import client as client_module
+
+    retry = build_retry(total=10)
+    for _ in range(8):
+        retry = _retried(retry, 503)
+    assert retry.get_backoff_time() <= client_module.BACKOFF_MAX * 1.5
+
+
+def test_short_retry_after_is_honoured():
+    from urllib3.response import HTTPResponse
+
+    retry = _retried(build_retry(), 429, {"Retry-After": "3"})
+    assert retry.total == 2
+    assert retry.get_retry_after(HTTPResponse(headers={"Retry-After": "3"})) == 3
+
+
+def test_long_retry_after_is_not_retried():
+    from urllib3.exceptions import MaxRetryError
+
+    with pytest.raises(MaxRetryError):
+        _retried(build_retry(), 429, {"Retry-After": "60"})
+
+
+def test_malformed_retry_after_falls_back_to_backoff():
+    from urllib3.response import HTTPResponse
+
+    retry = _retried(build_retry(), 429, {"Retry-After": "soon"})
+    assert retry.get_retry_after(HTTPResponse(headers={"Retry-After": "soon"})) is None
+    assert retry.get_backoff_time() >= 1.0

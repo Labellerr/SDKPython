@@ -1,9 +1,12 @@
 # labellerr/client.py
 
+import random
+from itertools import takewhile
 from typing import Any, Dict, Mapping, Optional, Union
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.exceptions import MaxRetryError, ResponseError
 from urllib3.util.retry import Retry
 
 from . import client_utils
@@ -26,6 +29,77 @@ RETRY_STATUS_CODES = (429, 500, 502, 503, 504)
 # method (urllib3 ``connect`` retries do not look at the method).
 RETRY_METHODS = frozenset(["HEAD", "GET", "PUT", "DELETE", "OPTIONS"])
 DEFAULT_TIMEOUT = 30  # seconds
+# Longest server-supplied Retry-After the client sleeps for before retrying. A longer
+# one is not retried: the response is returned and RateLimitError.retry_after (or the
+# ServerError) carries it to the caller.
+RETRY_AFTER_MAX = 10.0  # seconds
+# Cap on one exponential-backoff sleep, before jitter.
+BACKOFF_MAX = 10.0  # seconds
+# Random extra sleep, as a fraction of the backoff, so clients that failed together
+# do not retry together.
+BACKOFF_JITTER = 0.5
+
+
+class LabellerrRetry(Retry):
+    """
+    urllib3 ``Retry`` with the client's backoff rules (works with urllib3 1.26 and 2):
+
+    - the first retry already backs off (``backoff_factor`` seconds; urllib3 retries
+      the first time without sleeping), doubling up to ``BACKOFF_MAX``, plus jitter;
+    - a ``Retry-After`` of at most ``RETRY_AFTER_MAX`` is slept for; a longer one
+      stops the retries and the response is returned.
+
+    Settings live in module constants, not constructor arguments, because
+    ``Retry.new()`` rebuilds the object from the standard arguments only.
+    """
+
+    def get_backoff_time(self) -> float:
+        consecutive_errors = len(
+            list(
+                takewhile(lambda x: x.redirect_location is None, reversed(self.history))
+            )
+        )
+        if consecutive_errors < 1 or not self.backoff_factor:
+            return 0.0
+        backoff = min(BACKOFF_MAX, self.backoff_factor * 2 ** (consecutive_errors - 1))
+        return backoff + random.uniform(0, backoff * BACKOFF_JITTER)
+
+    def get_retry_after(self, response):
+        # urllib3 raises InvalidHeader for a malformed value; treat it as absent so
+        # the backoff applies instead.
+        try:
+            return super().get_retry_after(response)
+        except Exception:
+            return None
+
+    def increment(self, method=None, url=None, response=None, *args, **kwargs):
+        if response is not None and self.respect_retry_after_header:
+            retry_after = self.get_retry_after(response)
+            if retry_after is not None and retry_after > RETRY_AFTER_MAX:
+                raise MaxRetryError(
+                    kwargs.get("_pool"),
+                    url or "",
+                    ResponseError(
+                        f"Retry-After {retry_after:g}s exceeds {RETRY_AFTER_MAX:g}s"
+                    ),
+                )
+        return super().increment(method, url, response, *args, **kwargs)
+
+
+def _require_client_id(client_id: Union[str, int, None]) -> str:
+    """
+    The client ID as a string; every request carries it (URL and header).
+
+    :raises LabellerrError: If it is missing or blank
+    """
+    if client_id is None or isinstance(client_id, bool):
+        raise LabellerrError(
+            "client_id is required (the client ID of the Labellerr workspace)"
+        )
+    value = str(client_id).strip()
+    if not value:
+        raise LabellerrError("client_id must not be empty")
+    return value
 
 
 def build_retry(total: int = 3, backoff_factor: float = 1) -> Retry:
@@ -36,15 +110,15 @@ def build_retry(total: int = 3, backoff_factor: float = 1) -> Retry:
     and mapped by ``client_utils.error_from_response`` (``ServerError`` /
     ``RateLimitError``) instead of surfacing as a ``requests`` ``RetryError``.
     """
-    return Retry(
+    return LabellerrRetry(
         total=total,
         backoff_factor=backoff_factor,
         status_forcelist=RETRY_STATUS_CODES,
         allowed_methods=RETRY_METHODS,
         raise_on_status=False,
-        # Never sleep for a server-supplied Retry-After (it can be hours); the backoff
-        # applies, and RateLimitError.retry_after carries the value to the caller.
-        respect_retry_after_header=False,
+        # A Retry-After up to RETRY_AFTER_MAX is honoured; LabellerrRetry returns the
+        # response for a longer one.
+        respect_retry_after_header=True,
     )
 
 
@@ -57,7 +131,7 @@ class LabellerrClient:
         self,
         api_key: Optional[str] = None,
         api_secret: Optional[str] = None,
-        client_id: Optional[str] = None,
+        client_id: Union[str, int, None] = None,
         enable_connection_pooling: bool = True,
         pool_connections: int = 10,
         pool_maxsize: int = 20,
@@ -76,7 +150,9 @@ class LabellerrClient:
 
         :param api_key: The API key for authentication.
         :param api_secret: The API secret for authentication.
-        :param client_id: The client ID for the Labellerr account.
+        :param client_id: The client ID (workspace) of the Labellerr account.
+            Required: it is sent with every request. Pass it by keyword when
+            credentials come from ``access_token=`` or ``credentials=``.
         :param enable_connection_pooling: Whether to enable connection pooling
         :param pool_connections: Number of connection pools to cache
         :param pool_maxsize: Maximum number of connections to save in the pool
@@ -90,6 +166,7 @@ class LabellerrClient:
             mounted on it, and ``close()`` does not close it).
         :raises AuthenticationError: If no credentials, more than one kind, or an
             empty one is given.
+        :raises LabellerrError: If ``client_id`` is missing or blank.
         """
         self.credentials = resolve_credentials(
             api_key=api_key,
@@ -103,18 +180,7 @@ class LabellerrClient:
             raise TypeError("settings must be a labellerr Settings instance")
         self.settings = settings
 
-        # Read-only conveniences kept for backward compatibility; requests are
-        # authenticated from ``self.credentials`` only.
-        self.api_key: Optional[str] = None
-        self.api_secret: Optional[str] = None
-        self.access_token: Union[str, TokenProvider, None] = None
-        if isinstance(self.credentials, ApiKeyCredentials):
-            self.api_key = self.credentials.api_key
-            self.api_secret = self.credentials.api_secret
-        elif isinstance(self.credentials, BearerTokenCredentials):
-            self.access_token = self.credentials.token_source
-
-        self.client_id = client_id
+        self.client_id: str = _require_client_id(client_id)
         self.email_id = email_id
         # Plain attribute: callers may reassign it at runtime.
         self.base_url = settings.base_url
@@ -139,7 +205,7 @@ class LabellerrClient:
     def from_access_token(
         cls,
         access_token: Union[str, TokenProvider],
-        client_id: Optional[str],
+        client_id: Union[str, int],
         email_id: Optional[str] = None,
         **kwargs: Any,
     ) -> "LabellerrClient":
@@ -148,9 +214,10 @@ class LabellerrClient:
 
         :param access_token: The user's access token, or a zero-argument function
             returning one.
-        :param client_id: The client ID (workspace) to act in.
+        :param client_id: The client ID (workspace) to act in. Required.
         :param email_id: The user's email.
         :param kwargs: Any other LabellerrClient keyword argument.
+        :raises LabellerrError: If ``client_id`` is missing or blank.
         """
         return cls(
             client_id=client_id,
@@ -158,6 +225,31 @@ class LabellerrClient:
             email_id=email_id,
             **kwargs,
         )
+
+    # Read-only views of ``self.credentials``, kept for backward compatibility.
+    # Requests are authenticated from ``self.credentials`` only, so these cannot be
+    # reassigned (that would silently not change the credentials).
+
+    @property
+    def api_key(self) -> Optional[str]:
+        """The API key, for an API-key client; otherwise None."""
+        if isinstance(self.credentials, ApiKeyCredentials):
+            return self.credentials.api_key
+        return None
+
+    @property
+    def api_secret(self) -> Optional[str]:
+        """The API secret, for an API-key client; otherwise None."""
+        if isinstance(self.credentials, ApiKeyCredentials):
+            return self.credentials.api_secret
+        return None
+
+    @property
+    def access_token(self) -> Union[str, TokenProvider, None]:
+        """The token or token function, for a token client; otherwise None."""
+        if isinstance(self.credentials, BearerTokenCredentials):
+            return self.credentials.token_source
+        return None
 
     @property
     def caller_identity(self) -> Optional[str]:
@@ -227,10 +319,13 @@ class LabellerrClient:
         Specialized error handling for upload operations that may have different success patterns.
 
         :param response: requests.Response object
-        :param request_id: Optional request tracking ID
+        :param request_id: Optional request tracking ID; defaults to the
+            ``x-correlation-id`` the request was sent with
         :return: JSON response data for successful requests
         :raises LabellerrError: For non-successful responses
         """
+        if request_id is None:
+            request_id = client_utils.sent_request_id(response)
         if response.status_code < 400:
             try:
                 return response.json()
@@ -285,14 +380,21 @@ class LabellerrClient:
         :param method: HTTP method (GET, POST, etc.)
         :param url: Request URL
         :param extra_headers: Optional extra headers to include
-        :param request_id: Optional request tracking ID
+        :param request_id: Optional request tracking ID, sent as the
+            ``x-correlation-id`` header (generated when not given) and reported in
+            any error, so it matches the gateway's logs
         :param handle_response: Whether to parse response (default True)
         :param kwargs: Additional arguments to pass to requests (``params``,
             ``json``, ``data``, ``files``, ``timeout`` (default 30 s), ``headers``)
         :return: Parsed response data if handle_response=True, otherwise Response object
         :raises LabellerrError: For non-successful responses when handle_response=True
         """
-        headers = self._build_headers(extra_headers)
+        if request_id is None:
+            request_id = client_utils.generate_request_id()
+        headers = client_utils.merge_headers(
+            {client_utils.CORRELATION_ID_HEADER: request_id},
+            self._build_headers(extra_headers),
+        )
         if kwargs.get("headers"):
             headers = client_utils.merge_headers(headers, kwargs["headers"])
         kwargs["headers"] = headers

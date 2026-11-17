@@ -6,6 +6,8 @@ from .connections import LabellerrConnection, LabellerrConnectionMeta
 from ..schemas import GCSConnectionTestParams, GCSConnectionParams
 from ..exceptions import LabellerrError
 
+logger = logging.getLogger(__name__)
+
 
 class GCSConnection(LabellerrConnection):
 
@@ -68,7 +70,7 @@ class GCSConnection(LabellerrConnection):
         :return: Connection ID for GCP connector
         """
         response = GCSConnection.test_connection(client, params)
-        logging.info(f"GCS connection test response: {response}")
+        logger.info("GCS connection test response: %s", response)
 
         unique_id = str(uuid.uuid4())
         url = f"{client.base_url}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"

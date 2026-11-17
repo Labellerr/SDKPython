@@ -5,12 +5,13 @@ from .client import LabellerrClient
 from .core.credentials import ApiKeyCredentials, BearerTokenCredentials, Credentials
 from .core.exceptions import (
     AuthenticationError,
+    JobFailedError,
+    JobTimeoutError,
     LabellerrError,
     NotFoundError,
     PermissionDeniedError,
     RateLimitError,
     ServerError,
-    JobTimeoutError,
 )
 
 # Version from package metadata (computed once, in labellerr.core.settings, which
@@ -28,6 +29,7 @@ __all__ = [
     "RateLimitError",
     "ServerError",
     "JobTimeoutError",
+    "JobFailedError",
     "Credentials",
     "ApiKeyCredentials",
     "BearerTokenCredentials",

@@ -1,3 +1,4 @@
+import contextvars
 import logging
 import os
 import uuid
@@ -5,8 +6,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
 from .. import constants, gcs
-from ..exceptions import LabellerrError
+from ..exceptions import (
+    AuthenticationError,
+    LabellerrError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 from ..client import LabellerrClient
+
+logger = logging.getLogger(__name__)
+
+# Errors that are about the caller, not one batch: every other batch would fail the
+# same way, so the upload stops at once.
+_FATAL_UPLOAD_ERRORS = (AuthenticationError, PermissionDeniedError, RateLimitError)
 
 
 def get_total_folder_file_count_and_total_size(folder_path, data_type):
@@ -41,12 +53,12 @@ def get_total_folder_file_count_and_total_size(folder_path, data_type):
                             total_file_count += 1
                             total_file_size += file_size
                         except OSError as e:
-                            logging.error(f"Error reading {file_path}: {str(e)}")
+                            logger.error("Error reading %s: %s", file_path, e)
                     elif entry.is_dir():
                         # Recursively scan subdirectories
                         scan_directory(entry.path)
         except OSError as e:
-            logging.error(f"Error scanning directory {directory}: {str(e)}")
+            logger.error("Error scanning directory %s: %s", directory, e)
 
     scan_directory(folder_path)
     return total_file_count, total_file_size, files_list
@@ -77,9 +89,9 @@ def get_total_file_count_and_total_size(files_list, data_type):
             total_file_count += 1
             total_file_size += file_size
         except OSError as e:
-            logging.error(f"Error reading {file_path}: {str(e)}")
+            logger.error("Error reading %s: %s", file_path, e)
         except Exception as e:
-            logging.error(f"Unexpected error reading {file_path}: {str(e)}")
+            logger.error("Unexpected error reading %s: %s", file_path, e)
 
     return total_file_count, total_file_size, files_list
 
@@ -198,7 +210,7 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
                 )
             )
         except Exception as e:
-            logging.error(f"Failed to analyze folder contents: {str(e)}")
+            logger.error("Failed to analyze folder contents: %s", e)
             raise
 
         # Check file limits
@@ -211,8 +223,8 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
                 f"Total file size: {total_file_volumn/1024/1024:.1f}MB exceeds limit of {constants.TOTAL_FILES_SIZE_LIMIT_PER_DATASET/1024/1024:.1f}MB"
             )
 
-        logging.info(f"Total file count: {total_file_count}")
-        logging.info(f"Total file size: {total_file_volumn/1024/1024:.1f} MB")
+        logger.info("Total file count: %d", total_file_count)
+        logger.info("Total file size: %.1f MB", total_file_volumn / 1024 / 1024)
 
         # Use generator for memory-efficient batch creation
         def create_batches():
@@ -234,10 +246,10 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
                         current_batch.append(file_path)
                         current_batch_size += file_size
                 except OSError as e:
-                    logging.error(f"Error accessing file {file_path}: {str(e)}")
+                    logger.error("Error accessing file %s: %s", file_path, e)
                     fail_queue.append(file_path)
                 except Exception as e:
-                    logging.error(f"Unexpected error processing {file_path}: {str(e)}")
+                    logger.error("Unexpected error processing %s: %s", file_path, e)
                     fail_queue.append(file_path)
 
             if current_batch:
@@ -251,7 +263,7 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
                 "No valid files found to upload in the specified folder"
             )
 
-        logging.info(f"CPU count: {os.cpu_count()}, Batch Count: {len(batches)}")
+        logger.info("CPU count: %s, Batch Count: %d", os.cpu_count(), len(batches))
 
         # Calculate optimal number of workers based on CPU count and batch count
         max_workers = min(
@@ -260,10 +272,12 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
             20,
         )
         connection_id = str(uuid.uuid4())
-        # Process batches in parallel
+        # Process batches in parallel. Each batch runs in its own copy of the
+        # caller's contextvars context (a token function may read a ContextVar).
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_batch = {
                 executor.submit(
+                    contextvars.copy_context().run,
                     __process_batch,
                     client,
                     data_config["client_id"],
@@ -284,9 +298,12 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
                         success_queue.extend(batch)
                     else:
                         fail_queue.extend(batch)
+                except _FATAL_UPLOAD_ERRORS:
+                    for pending in future_to_batch:
+                        pending.cancel()
+                    raise
                 except Exception as e:
-                    logging.exception(e)
-                    logging.error(f"Batch upload failed: {str(e)}")
+                    logger.exception("Batch upload failed: %s", e)
                     fail_queue.extend(batch)
 
         if not success_queue and fail_queue:
@@ -303,5 +320,5 @@ def upload_folder_files_to_dataset(client: "LabellerrClient", data_config):
     except LabellerrError:
         raise
     except Exception as e:
-        logging.error(f"Failed to upload files: {str(e)}")
+        logger.error("Failed to upload files: %s", e)
         raise

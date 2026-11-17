@@ -1,8 +1,10 @@
 """This module will contain all CRUD for projects. Example, create, list projects, get project, delete project, update project, etc."""
 
 import concurrent.futures
+import contextvars
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -15,6 +17,7 @@ import requests
 from .. import client_utils, constants, schemas
 from ..exceptions import (
     InvalidProjectError,
+    JobFailedError,
     JobTimeoutError,
     LabellerrError,
     RateLimitError,
@@ -25,9 +28,41 @@ from ..exports import Export
 
 from ..client import LabellerrClient
 
+logger = logging.getLogger(__name__)
+
 # Pre-annotation job polling defaults (the interval matches what poll() used).
 PREANNOTATION_POLL_INTERVAL = 2.0
 PREANNOTATION_TIMEOUT = 3600.0
+# Smallest polling interval accepted (interval=0 would flood the API).
+MIN_PREANNOTATION_POLL_INTERVAL = 0.5
+CONF_BUCKETS = ("low", "medium", "high")
+
+
+def _validate_polling(timeout: Optional[float], interval: float) -> None:
+    """
+    Check pre-annotation polling arguments before any request is sent.
+
+    :raises LabellerrError: If ``interval`` is not a number of at least
+        ``MIN_PREANNOTATION_POLL_INTERVAL`` seconds, or ``timeout`` is neither None
+        nor a finite number >= 0
+    """
+
+    def is_number(value) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
+
+    if not is_number(interval) or interval < MIN_PREANNOTATION_POLL_INTERVAL:
+        raise LabellerrError(
+            f"interval must be a number of at least "
+            f"{MIN_PREANNOTATION_POLL_INTERVAL} seconds, got {interval!r}"
+        )
+    if timeout is not None and (not is_number(timeout) or timeout < 0):
+        raise LabellerrError(
+            f"timeout must be None or a number >= 0 seconds, got {timeout!r}"
+        )
 
 
 class LabellerrProjectMeta(ABCMeta):
@@ -156,11 +191,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         def on_success(project_data):
             status_code = project_data.get("status_code", 500)
             if status_code == 300:
-                logging.info(
+                logger.info(
                     "Project %s processing completed successfully!", self.project_id
                 )
             else:
-                logging.warning(
+                logger.warning(
                     "Project %s processing finished with status code: %s",
                     self.project_id,
                     status_code,
@@ -292,7 +327,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             url = f"{self.client.base_url}/projects/rotations/add?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
 
             payload = json.dumps(rotation_config)
-            logging.info(f"Update Rotation Count Payload: {payload}")
+            logger.info("Update Rotation Count Payload: %s", payload)
 
             self.client.make_request(
                 "POST",
@@ -302,11 +337,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 data=payload,
             )
 
-            logging.info("Rotation configuration updated successfully.")
+            logger.info("Rotation configuration updated successfully.")
 
             return {"msg": "project rotation configuration updated"}
         except LabellerrError as e:
-            logging.error(f"Project rotation update config failed: {e}")
+            logger.error("Project rotation update config failed: %s", e)
             raise
 
     def preannotation_job_status(self, job_id: str) -> Dict:
@@ -315,16 +350,23 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         :param job_id: The job ID to check status for
         :return: The API response; the job status is at ``["response"]["status"]``
-        :raises LabellerrError: If the job reports ``failed`` or the request fails
+        :raises JobFailedError: If the job reports ``failed``
+        :raises LabellerrError: If the request fails
         """
         url = f"{self.client.base_url}/actions/upload_answers_status?project_id={self.project_id}&job_id={job_id}&client_id={self.client.client_id}"
         response_data = self.client.make_request("GET", url)
 
         current_status = (response_data.get("response") or {}).get("status", "unknown")
-        logging.info(f"Pre-annotation job status: {current_status}")
+        logger.info("Pre-annotation job status: %s", current_status)
 
         if current_status == "failed":
-            raise LabellerrError("Internal server error: ", response_data)
+            # The prefix is the message the blocking upload has always raised.
+            raise JobFailedError(
+                "Failed to get preannotation job status: "
+                f"pre-annotation job {job_id} failed",
+                job_id=job_id,
+                response_body=response_data,
+            )
 
         return response_data
 
@@ -342,11 +384,15 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         :param job_id: The job ID to wait for
         :param timeout: Maximum seconds to wait (default 3600); None waits forever
-        :param interval: Seconds between status requests (default 2)
+        :param interval: Seconds between status requests (default 2, at least
+            ``MIN_PREANNOTATION_POLL_INTERVAL``)
         :return: The API response of the completed job
         :raises JobTimeoutError: If the job is not completed before the timeout
-        :raises LabellerrError: If the job fails or a non-transient error occurs
+        :raises JobFailedError: If the job fails
+        :raises LabellerrError: If a non-transient error occurs, or ``timeout`` or
+            ``interval`` is invalid
         """
+        _validate_polling(timeout, interval)
         deadline = None if timeout is None else time.monotonic() + timeout
         last_error = None
 
@@ -355,7 +401,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 response_data = self.preannotation_job_status(job_id)
                 last_error = None
                 if (response_data.get("response") or {}).get("status") == "completed":
-                    logging.info("Pre-annotation job completed successfully!")
+                    logger.info("Pre-annotation job %s completed successfully", job_id)
                     return response_data
             except (
                 ServerError,
@@ -363,16 +409,12 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 requests.exceptions.RequestException,
             ) as e:
                 last_error = e
-                logging.warning(f"Transient error checking pre-annotation job: {e}")
-            except LabellerrError as e:
-                if type(e) is LabellerrError:
-                    # A failed job (or other untyped error): keep the message the
-                    # blocking call has always raised. Typed errors pass through.
-                    logging.error(f"Failed to get preannotation job status: {e}")
-                    raise LabellerrError(
-                        f"Failed to get preannotation job status: {e}"
-                    ) from e
+                logger.warning("Transient error checking pre-annotation job: %s", e)
+            except JobFailedError as e:
+                logger.error("%s", e)
                 raise
+            # Any other error (authentication, permission, not found, ...) is raised
+            # as it is.
 
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and remaining <= 0:
@@ -395,15 +437,20 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         Wait for a pre-annotation job in the background and return at once.
 
         A daemon thread runs :meth:`wait_for_preannotation_job` and ends when the
-        job completes, fails or times out; it never outlives the deadline.
+        job completes, fails or times out; it never outlives the deadline. The
+        thread runs in a copy of the caller's ``contextvars`` context.
 
         :param job_id: The job ID to check status for
         :param timeout: Maximum seconds to wait (default 3600); None waits forever
-        :param interval: Seconds between status requests (default 2)
+        :param interval: Seconds between status requests (default 2, at least
+            ``MIN_PREANNOTATION_POLL_INTERVAL``)
         :return: concurrent.futures.Future whose result is the final job response.
-            ``future.result()`` raises LabellerrError (JobTimeoutError on timeout).
+            ``future.result()`` raises LabellerrError (JobTimeoutError on timeout,
+            JobFailedError when the job fails).
+        :raises LabellerrError: At once, if ``timeout`` or ``interval`` is invalid
         """
-        future = concurrent.futures.Future()
+        _validate_polling(timeout, interval)
+        future: "concurrent.futures.Future[Dict]" = concurrent.futures.Future()
 
         def run():
             if not future.set_running_or_notify_cancel():
@@ -419,28 +466,36 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                     )
                     wrapped.__cause__ = e
                     e = wrapped
-                logging.error(f"Failed to get preannotation job status: {e}")
+                logger.error("Failed to get preannotation job status: %s", e)
                 future.set_exception(e)
 
+        context = contextvars.copy_context()
         threading.Thread(
-            target=run, name=f"preannotation-job-{job_id}", daemon=True
+            target=context.run,
+            args=(run,),
+            name=f"preannotation-job-{job_id}",
+            daemon=True,
         ).start()
         return future
 
-    def __start_preannotation_upload(
+    def start_preannotation_upload(
         self,
-        annotation_format,
-        annotation_file,
-        conf_bucket=None,
-    ):
+        annotation_format: str,
+        annotation_file: str,
+        conf_bucket: Optional[str] = None,
+    ) -> str:
         """
-        Uploads preannotation data to a project and returns the job ID.
+        Upload a pre-annotation file and return the processing job's ID, without
+        waiting for the job.
+
+        Follow the job with :meth:`preannotation_job_status` (one request) or
+        :meth:`wait_for_preannotation_job` (polls).
 
         :param annotation_format: The format of the preannotation data.
         :param annotation_file: The file path of the preannotation data.
-        :param conf_bucket: Confidence bucket [low, medium, high]
+        :param conf_bucket: Confidence bucket: ``low``, ``medium`` or ``high``
         :return: The pre-annotation job ID
-        :raises LabellerrError: If the upload fails.
+        :raises LabellerrError: If an argument is invalid or the upload fails.
         """
         try:
             if annotation_format not in constants.ANNOTATION_FORMAT:
@@ -451,11 +506,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             request_uuid = str(uuid.uuid4())
             url = f"{self.client.base_url}/actions/upload_answers?project_id={self.project_id}&answer_format={annotation_format}&client_id={self.client.client_id}&uuid={request_uuid}"
             if conf_bucket:
-                assert conf_bucket in [
-                    "low",
-                    "medium",
-                    "high",
-                ], "Invalid confidence bucket value. Must be one of [low, medium, high]"
+                if conf_bucket not in CONF_BUCKETS:
+                    raise LabellerrError(
+                        "Invalid confidence bucket value. Must be one of "
+                        "[low, medium, high]"
+                    )
                 url += f"&conf_bucket={conf_bucket}"
             # validate if the file exist then extract file name from the path
             if os.path.exists(annotation_file):
@@ -479,11 +534,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             # read job_id from the response
             job_id = response_data["response"]["job_id"]
 
-            logging.info(f"Preannotation job started successfully. Job ID: {job_id}")
+            logger.info("Preannotation job started successfully. Job ID: %s", job_id)
 
             return job_id
         except Exception as e:
-            logging.error(f"Failed to upload preannotation: {str(e)}")
+            logger.error("Failed to upload preannotation: %s", e)
             raise
 
     def upload_preannotations(
@@ -504,12 +559,15 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :param _async: If True, return a Future right after the upload request;
             otherwise block until the job completes (or ``timeout`` passes)
         :param timeout: Maximum seconds to wait for the job (default 3600)
-        :param interval: Seconds between status requests (default 2)
+        :param interval: Seconds between status requests (default 2, at least
+            ``MIN_PREANNOTATION_POLL_INTERVAL``)
         :return: A Future (``_async=True``) or the final job response
-        :raises LabellerrError: If the upload or the job fails
+        :raises LabellerrError: If an argument is invalid (checked before the
+            upload), or the upload or the job fails
         :raises JobTimeoutError: If the job does not finish before ``timeout``
         """
-        job_id = self.__start_preannotation_upload(
+        _validate_polling(timeout, interval)
+        job_id = self.start_preannotation_upload(
             annotation_format, annotation_file, conf_bucket
         )
         if _async:
@@ -695,10 +753,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             return result
 
         except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to check export status: {str(e)}")
+            logger.error("Failed to check export status: %s", e)
             raise
         except Exception as e:
-            logging.error(f"Unexpected error checking export status: {str(e)}")
+            logger.error("Unexpected error checking export status: %s", e)
             raise
 
     def list_files(self, search_queries, size=10, next_search_after=None):

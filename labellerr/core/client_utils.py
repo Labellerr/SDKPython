@@ -19,12 +19,31 @@ from .exceptions import (
 )
 from .settings import Settings
 
+# Sent with every API request; the gateway's trace middleware reads it, so the
+# request ID in an error matches the server's logs.
+CORRELATION_ID_HEADER = "x-correlation-id"
+
 
 def _set_header(headers: Dict[str, Any], name: str, value: Any) -> None:
     """Set a header, replacing any existing header of the same name in another case."""
     for existing in [key for key in headers if key.lower() == name.lower()]:
         del headers[existing]
     headers[name] = value
+
+
+def _header_text(name: str, value: Any) -> Any:
+    """
+    A header value ``requests`` can send: strings and bytes as they are; numbers
+    and UUIDs as strings.
+
+    :raises TypeError: For any other type (``requests`` would only fail, with
+        ``InvalidHeader``, when the request is sent)
+    """
+    if isinstance(value, (str, bytes)):
+        return value
+    if isinstance(value, (int, float, uuid.UUID)):
+        return str(value)
+    raise TypeError(f"Header {name!r} must be a string, got {type(value).__name__}")
 
 
 def merge_headers(
@@ -34,16 +53,22 @@ def merge_headers(
     Merge ``extra_headers`` over ``headers``, matching names case-insensitively so
     that, e.g., ``Origin`` replaces ``origin`` instead of sending both. Headers whose
     value is None are dropped (so a None in ``extra_headers`` removes a header).
+    Numbers and UUIDs are sent as strings.
 
     :param headers: Base headers (not modified)
     :param extra_headers: Headers to add or replace
     :return: A new dictionary of headers
+    :raises TypeError: If a header value is not a string, bytes, number or UUID
     """
     merged = dict(headers)
     if extra_headers:
         for name, value in extra_headers.items():
             _set_header(merged, name, value)
-    return {name: value for name, value in merged.items() if value is not None}
+    return {
+        name: _header_text(name, value)
+        for name, value in merged.items()
+        if value is not None
+    }
 
 
 def build_headers(
@@ -260,14 +285,17 @@ def error_from_response(
     ``LabellerrError``.
 
     ``args[0]`` keeps the shape the SDK has always raised: for a 4xx
-    ``{"error": body, "code": status}``; otherwise ``{"status": "internal server
+    ``{"error": body, "code": status}``; for a 5xx ``{"status": "internal server
     error", "message": ..., "request_id": ..., "error": body}`` (``error`` only when
-    there is a body).
+    there is a body). Any other status (e.g. a 202 or 204 the caller did not expect)
+    gets ``{"status": "unexpected response", "message": ..., "code": status,
+    "request_id": ..., "error": body}``.
 
     :param status_code: HTTP status
     :param body: Parsed JSON body (dict/list), or the response text when not JSON
     :param headers: Response headers (for ``Retry-After``)
-    :param request_id: Request tracking ID (generated for a 5xx when not given)
+    :param request_id: Request tracking ID (the ``x-correlation-id`` sent; one is
+        generated only when it is unknown)
     :return: The error, to be raised by the caller
     """
     error_code = _gateway_error_code(body)
@@ -280,15 +308,24 @@ def error_from_response(
         else:
             error_class = LabellerrError
 
-    if isinstance(status_code, int) and 400 <= status_code < 500:
+    is_int = isinstance(status_code, int)
+    if is_int and 400 <= status_code < 500:
         payload: Dict[str, Any] = {"error": body, "code": status_code}
     else:
         request_id = request_id or generate_request_id()
-        payload = {
-            "status": "internal server error",
-            "message": "Please contact support with the request tracking id",
-            "request_id": request_id,
-        }
+        if is_int and status_code >= 500:
+            payload = {
+                "status": "internal server error",
+                "message": "Please contact support with the request tracking id",
+                "request_id": request_id,
+            }
+        else:
+            payload = {
+                "status": "unexpected response",
+                "message": f"The API answered with unexpected status {status_code}",
+                "code": status_code,
+                "request_id": request_id,
+            }
         if body is not None and body != "":
             payload["error"] = body
 
@@ -303,6 +340,17 @@ def error_from_response(
             _header_value(headers, "Retry-After")
         )
     return error_class(payload, **details)
+
+
+def sent_request_id(response: Any) -> Optional[str]:
+    """
+    The ``x-correlation-id`` a ``requests`` response's request was sent with.
+
+    :param response: requests.Response object
+    :return: The ID, or None when the request carried none
+    """
+    request = getattr(response, "request", None)
+    return _header_value(getattr(request, "headers", None), CORRELATION_ID_HEADER)
 
 
 def response_body(response: Any) -> Any:
@@ -324,13 +372,16 @@ def handle_response(response, request_id=None, success_codes=None):
     ``error_from_response`` maps it to.
 
     :param response: requests.Response object
-    :param request_id: Optional request tracking ID
+    :param request_id: Optional request tracking ID; defaults to the
+        ``x-correlation-id`` the request was sent with
     :param success_codes: Optional list of success status codes (default: [200, 201])
     :return: JSON response data for successful requests
     :raises LabellerrError: For non-successful responses
     """
     if success_codes is None:
         success_codes = [200, 201]
+    if request_id is None:
+        request_id = sent_request_id(response)
 
     if response.status_code in success_codes:
         try:

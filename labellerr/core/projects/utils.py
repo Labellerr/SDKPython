@@ -60,14 +60,14 @@ def get_direct_upload_url(
     :return: Direct upload URL
     """
     url = f"{client.base_url}/connectors/direct-upload-url"
-    params = {  # noqa: F841
+    params = {
         "client_id": client.client_id,
         "purpose": purpose,
         "file_name": file_name,
     }
 
     try:
-        response_data = client.make_request("GET", url)
+        response_data = client.make_request("GET", url, params=params)
         return response_data["response"]
     except LabellerrError:
         raise

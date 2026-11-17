@@ -12,6 +12,8 @@ from ..client import LabellerrClient
 from ..files import LabellerrFile
 from ..connectors import LabellerrConnection
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..projects import LabellerrProject
 
@@ -168,11 +170,11 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         def on_success(dataset_data):
             status_code = dataset_data.get("status_code", 500)
             if status_code == 300:
-                logging.info(
+                logger.info(
                     "Dataset %s processing completed successfully!", self.dataset_id
                 )
             else:
-                logging.warning(
+                logger.warning(
                     "Dataset %s processing finished with status code: %s",
                     self.dataset_id,
                     status_code,
@@ -197,7 +199,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         :param page_size: Number of files to fetch per API request (default: 1000)
         :return: Generator yielding LabellerrFile instances
         """
-        logging.info(f"Fetching files for dataset: {self.dataset_id}")
+        logger.info("Fetching files for dataset: %s", self.dataset_id)
         next_search_after = None  # Start with None for first page
 
         while True:
@@ -228,8 +230,10 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
                     _file = LabellerrFile.from_file_data(self.client, file_data)
                     yield _file
                 except LabellerrError as e:
-                    logging.warning(
-                        f"Warning: Failed to create file instance for {file_data.get('file_id')}: {str(e)}"
+                    logger.warning(
+                        "Failed to create file instance for %s: %s",
+                        file_data.get("file_id"),
+                        e,
                     )
 
             # Get next_search_after for pagination

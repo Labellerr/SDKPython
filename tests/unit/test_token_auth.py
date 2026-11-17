@@ -14,6 +14,7 @@ from labellerr import (
     BearerTokenCredentials,
     Credentials,
     LabellerrClient,
+    LabellerrError,
     Settings,
 )
 from labellerr.core import client_utils
@@ -125,8 +126,15 @@ def test_provider_returning_a_coroutine_raises_and_closes_it():
 
 
 def test_base_credentials_is_abstract():
-    with pytest.raises(NotImplementedError):
-        Credentials().auth_headers()
+    with pytest.raises(TypeError):
+        Credentials()  # type: ignore[abstract]
+
+    class OnlyHeaders(Credentials):
+        def auth_headers(self):
+            return {}
+
+    with pytest.raises(TypeError):
+        OnlyHeaders()  # secret_values() is abstract too
 
 
 # --- Secrets never leak into messages or reprs -----------------------------------
@@ -278,10 +286,19 @@ def test_token_client_sends_no_clientid_or_email_header():
     assert {"clientid", "email_id"}.isdisjoint(k.lower() for k in headers)
 
 
-def test_headers_are_sent_without_a_client_id():
-    client = LabellerrClient("k", "s", None, enable_connection_pooling=False)
-    headers = _sent_headers(client)
-    assert headers["api_key"] == "k" and "client_id" not in headers
+@pytest.mark.parametrize("client_id", [None, "", "   ", True])
+def test_client_id_is_required(client_id):
+    with pytest.raises(LabellerrError, match="client_id"):
+        LabellerrClient("k", "s", client_id, enable_connection_pooling=False)
+    with pytest.raises(LabellerrError, match="client_id"):
+        LabellerrClient.from_access_token(
+            "tok", client_id, enable_connection_pooling=False
+        )
+
+
+def test_client_id_is_kept_as_a_string():
+    assert LabellerrClient("k", "s", 7).client_id == "7"
+    assert LabellerrClient("k", "s", " c-1 ").client_id == "c-1"
 
 
 def test_caller_identity():

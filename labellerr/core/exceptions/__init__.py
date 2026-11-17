@@ -64,6 +64,18 @@ class JobTimeoutError(LabellerrError):
     """A background job did not finish before the polling deadline passed."""
 
 
+class JobFailedError(LabellerrError):
+    """
+    A background job finished with status ``failed``.
+
+    :ivar job_id: The ID of the failed job
+    """
+
+    def __init__(self, *args: Any, job_id: Optional[str] = None, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.job_id = job_id
+
+
 class InvalidDatasetError(LabellerrError):
     """Custom exception for invalid dataset errors."""
 
@@ -98,6 +110,7 @@ __all__ = [
     "RateLimitError",
     "ServerError",
     "JobTimeoutError",
+    "JobFailedError",
     "InvalidDatasetError",
     "InvalidProjectError",
     "InvalidDatasetIDError",

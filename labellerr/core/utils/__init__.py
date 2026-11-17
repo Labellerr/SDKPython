@@ -7,6 +7,8 @@ import time
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, Union
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T")
 
 
@@ -81,14 +83,14 @@ def poll(
         except Exception as e:
             if on_exception:
                 on_exception(e)
-            logging.exception(f"Exception in poll function: {str(e)}")
+            logger.exception("Exception in poll function: %s", e)
 
         # Check if we've reached timeout
         if timeout is not None and time.time() - start_time > timeout:
             if on_timeout:
                 on_timeout(attempts, last_result)
-            logging.warning(
-                f"Polling timed out after {timeout} seconds ({attempts} attempts)"
+            logger.warning(
+                "Polling timed out after %s seconds (%d attempts)", timeout, attempts
             )
             return last_result
 
@@ -96,7 +98,7 @@ def poll(
         if max_retries is not None and attempts >= max_retries:
             if on_timeout:
                 on_timeout(attempts, last_result)
-            logging.warning(f"Polling reached max retries: {max_retries}")
+            logger.warning("Polling reached max retries: %s", max_retries)
             return last_result
 
         # Wait before next attempt

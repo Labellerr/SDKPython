@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 import aiofiles
 import aiohttp
 
-from labellerr.core import client_utils, constants
+from labellerr.core import client_utils
 from labellerr.core.credentials import (
     ApiKeyCredentials,
     BearerTokenCredentials,
@@ -19,10 +19,14 @@ from labellerr.core.credentials import (
     resolve_credentials,
 )
 from labellerr.core.exceptions import LabellerrError
+from labellerr.core.schemas.base import DatasetDataType
 from labellerr.core.settings import DEFAULT_SOURCE, Settings
 from labellerr.validators import auto_log_and_handle_errors_async
 
+logger = logging.getLogger(__name__)
+
 ASYNC_SOURCE = "sdk-async"
+DATA_TYPES = [data_type.value for data_type in DatasetDataType]
 
 
 async def _read_body(response: aiohttp.ClientResponse) -> Tuple[Any, bool]:
@@ -86,17 +90,6 @@ class AsyncLabellerrClient:
             raise TypeError("settings must be a labellerr Settings instance")
         self.settings = settings
 
-        # Read-only conveniences kept for backward compatibility; requests are
-        # authenticated from ``self.credentials`` only.
-        self.api_key: Optional[str] = None
-        self.api_secret: Optional[str] = None
-        self.access_token: Union[str, TokenProvider, None] = None
-        if isinstance(self.credentials, ApiKeyCredentials):
-            self.api_key = self.credentials.api_key
-            self.api_secret = self.credentials.api_secret
-        elif isinstance(self.credentials, BearerTokenCredentials):
-            self.access_token = self.credentials.token_source
-
         # Plain attribute: callers may reassign it at runtime.
         self.base_url = settings.base_url
         self._session: Optional[aiohttp.ClientSession] = None
@@ -114,6 +107,31 @@ class AsyncLabellerrClient:
         :param kwargs: Any other AsyncLabellerrClient keyword argument.
         """
         return cls(access_token=access_token, **kwargs)
+
+    # Read-only views of ``self.credentials``, kept for backward compatibility.
+    # Requests are authenticated from ``self.credentials`` only, so these cannot be
+    # reassigned (that would silently not change the credentials).
+
+    @property
+    def api_key(self) -> Optional[str]:
+        """The API key, for an API-key client; otherwise None."""
+        if isinstance(self.credentials, ApiKeyCredentials):
+            return self.credentials.api_key
+        return None
+
+    @property
+    def api_secret(self) -> Optional[str]:
+        """The API secret, for an API-key client; otherwise None."""
+        if isinstance(self.credentials, ApiKeyCredentials):
+            return self.credentials.api_secret
+        return None
+
+    @property
+    def access_token(self) -> Union[str, TokenProvider, None]:
+        """The token or token function, for a token client; otherwise None."""
+        if isinstance(self.credentials, BearerTokenCredentials):
+            return self.credentials.token_source
+        return None
 
     @property
     def _source(self) -> str:
@@ -185,7 +203,9 @@ class AsyncLabellerrClient:
 
         :param method: HTTP method (GET, POST, etc.)
         :param url: Request URL
-        :param request_id: Optional request tracking ID (auto-generated if not provided)
+        :param request_id: Optional request tracking ID (auto-generated if not
+            provided), sent as the ``x-correlation-id`` header and reported in any
+            error, so it matches the gateway's logs
         :param success_codes: Optional list of success status codes (default: [200, 201])
         :param kwargs: Additional arguments to pass to aiohttp
         :return: JSON response data for successful requests
@@ -194,6 +214,10 @@ class AsyncLabellerrClient:
         # Generate request_id if not provided
         if request_id is None:
             request_id = client_utils.generate_request_id()
+        kwargs["headers"] = client_utils.merge_headers(
+            {client_utils.CORRELATION_ID_HEADER: request_id},
+            kwargs.get("headers"),
+        )
 
         await self._ensure_session()
 
@@ -259,7 +283,7 @@ class AsyncLabellerrClient:
             )
             return response_data["response"]
         except Exception as e:
-            logging.exception(f"Error getting direct upload url: {e}")
+            logger.exception("Error getting direct upload url: %s", e)
             raise
 
     async def connect_local_files(
@@ -406,10 +430,8 @@ class AsyncLabellerrClient:
         """
         try:
             # Validate data_type
-            if dataset_config.get("data_type") not in constants.DATA_TYPES:
-                raise LabellerrError(
-                    f"Invalid data_type. Must be one of {constants.DATA_TYPES}"
-                )
+            if dataset_config.get("data_type") not in DATA_TYPES:
+                raise LabellerrError(f"Invalid data_type. Must be one of {DATA_TYPES}")
 
             # Get connector_type from dataset_config, default to "local"
             connector_type = dataset_config.get("connector_type", "local")
@@ -455,7 +477,7 @@ class AsyncLabellerrClient:
             return {"response": "success", "dataset_id": dataset_id}
 
         except LabellerrError as e:
-            logging.error(f"Failed to create dataset: {e}")
+            logger.error("Failed to create dataset: %s", e)
             raise
 
     # Add more async methods as needed...

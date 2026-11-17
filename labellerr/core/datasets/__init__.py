@@ -15,6 +15,8 @@ from ..connectors import LabellerrConnection
 
 from ..client import LabellerrClient
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
     "LabellerrImageDataset",
     "LabellerrVideoDataset",
@@ -102,7 +104,7 @@ def create_dataset_from_local(
             },
         )
         connection_id = result.pop("connection_id")
-        logging.info(f"Folder uploaded successfully. {result}")
+        logger.info("Folder uploaded successfully. %s", result)
     else:
         raise LabellerrError("No files or folder to upload provided")
 

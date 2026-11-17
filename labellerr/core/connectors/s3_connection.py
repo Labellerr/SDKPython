@@ -5,6 +5,8 @@ from ..schemas import AWSConnectionParams, AWSConnectionTestParams
 from .connections import LabellerrConnection, LabellerrConnectionMeta
 import logging
 
+logger = logging.getLogger(__name__)
+
 
 class S3Connection(LabellerrConnection):
 
@@ -65,7 +67,7 @@ class S3Connection(LabellerrConnection):
         # Tests the connection before creating it
         response = S3Connection.test_connection(client, params)
 
-        logging.info(f"Connection test response: {response}")
+        logger.info("Connection test response: %s", response)
 
         unique_id = str(uuid.uuid4())
         url = f"{client.base_url}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"

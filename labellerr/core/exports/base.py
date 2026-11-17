@@ -5,6 +5,8 @@ Export class for handling export operations with status tracking and polling.
 from typing import TYPE_CHECKING, Dict, Any, Optional
 import logging
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..projects.base import LabellerrProject
 
@@ -68,11 +70,11 @@ class Export:
             return False
 
         def on_success(response_data):
-            logging.info(f"Export {self._report_id} completed successfully!")
+            logger.info("Export %s completed successfully!", self._report_id)
             return response_data
 
         def on_failure(response_data):
-            logging.error(f"Export {self._report_id} failed: {response_data}")
+            logger.error("Export %s failed: %s", self._report_id, response_data)
             return response_data
 
         return poll(

@@ -1,5 +1,6 @@
 """Regression tests for review findings: typed errors, list_projects, users, headers."""
 
+import contextvars
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -60,12 +61,57 @@ def test_list_projects_skips_not_found_and_invalid_projects():
             raise NotFoundError("gone")
         if project_id == "p1":
             raise InvalidProjectError("old")
-        if project_id == "p2":
-            raise ServerError("broken project", status_code=500)
         return project_id
 
     with patch("labellerr.core.projects.LabellerrProject", side_effect=build):
-        assert list_projects(client) == ["p3"]
+        assert list_projects(client) == ["p2", "p3"]
+
+
+def test_list_projects_logs_how_many_were_skipped(caplog):
+    client = MagicMock()
+    client.base_url = "https://x.test"
+    client.client_id = "c"
+    client.make_request.return_value = _projects(3)
+
+    def build(_client, project_id):
+        if project_id == "p0":
+            raise NotFoundError("gone")
+        return project_id
+
+    with patch("labellerr.core.projects.LabellerrProject", side_effect=build):
+        with caplog.at_level("WARNING", logger="labellerr.core.projects"):
+            list_projects(client)
+
+    assert "skipped 1 of 3 projects" in caplog.text
+
+
+def test_list_projects_raises_a_server_error():
+    # A 500 for every project used to come back as an empty list.
+    client = MagicMock()
+    client.base_url = "https://x.test"
+    client.client_id = "c"
+    client.make_request.return_value = _projects(3)
+    with patch(
+        "labellerr.core.projects.LabellerrProject",
+        side_effect=ServerError("boom", status_code=500),
+    ):
+        with pytest.raises(ServerError):
+            list_projects(client)
+
+
+def test_list_projects_threads_see_the_callers_context_vars():
+    current_user = contextvars.ContextVar("current_user", default=None)
+    client = MagicMock()
+    client.base_url = "https://x.test"
+    client.client_id = "c"
+    client.make_request.return_value = _projects(3)
+    current_user.set("alice")
+
+    with patch(
+        "labellerr.core.projects.LabellerrProject",
+        side_effect=lambda _client, project_id: current_user.get(),
+    ):
+        assert list_projects(client) == ["alice"] * 3
 
 
 def test_list_projects_propagates_an_expired_token():

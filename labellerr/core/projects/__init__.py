@@ -1,4 +1,6 @@
+import contextvars
 import json
+import logging
 import uuid
 
 from labellerr import LabellerrClient
@@ -9,7 +11,6 @@ from ..exceptions import (
     InvalidProjectError,
     LabellerrError,
     NotFoundError,
-    ServerError,
 )
 from .audio_project import AudioProject as LabellerrAudioProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
@@ -20,6 +21,8 @@ from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "LabellerrProject",
@@ -104,19 +107,36 @@ def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
         try:
             project = LabellerrProject(client, project_id=project_data["project_id"])
             return project
-        except (NotFoundError, InvalidProjectError, ServerError):
-            # Dangling or non-migrated project (the API answers 404 or 500 for these):
-            # skip it. Any other error (an expired token, no access, a rate limit) is
-            # not about this one project: raise.
+        except (NotFoundError, InvalidProjectError):
+            # Dangling or unknown-type project: skip it. Any other error (a 5xx, an
+            # expired token, no access, a rate limit) is raised.
             return None
 
+    # Each task runs in its own copy of the caller's contextvars context, so a token
+    # function that reads a ContextVar still sees the caller's value.
     with ThreadPoolExecutor(max_workers=10) as executor:
-        projects = [
-            p
-            for p in executor.map(_instantiate_project, projects_data)
-            if p is not None
+        futures = [
+            executor.submit(
+                contextvars.copy_context().run, _instantiate_project, project_data
+            )
+            for project_data in projects_data
         ]
+        try:
+            results = [future.result() for future in futures]
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
 
+    projects = [p for p in results if p is not None]
+    skipped = len(results) - len(projects)
+    if skipped:
+        logger.warning(
+            "list_projects skipped %d of %d projects that could not be loaded "
+            "(not found or unknown data type)",
+            skipped,
+            len(results),
+        )
     return projects
 
 

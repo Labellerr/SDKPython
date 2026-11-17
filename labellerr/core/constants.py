@@ -52,13 +52,26 @@ cdn_server_address = "cdn-951134552678.us-central1.run.app:443"
 
 def __getattr__(name):
     """
-    Legacy names ``BASE_URL`` and ``ALLOWED_ORIGINS``, kept for external callers.
+    Legacy names ``BASE_URL`` and ``ALLOWED_ORIGINS``, kept for external callers
+    (labellerr-mcp still reads them). Reading either one warns: use
+    ``client.base_url`` / ``client.settings`` instead.
 
     They resolve from the environment each time they are read (nothing is read at
     import). The SDK itself uses ``DEFAULT_BASE_URL`` / ``DEFAULT_ORIGIN``.
+
+    Note: because this module defines ``__getattr__``, mypy accepts any attribute
+    name on it, so a typo such as ``constants.DATA_TYPES`` is not caught statically.
     """
     import os
+    import warnings
 
+    if name in ("BASE_URL", "ALLOWED_ORIGINS"):
+        replacement = "client.base_url" if name == "BASE_URL" else "client.settings"
+        warnings.warn(
+            f"labellerr.core.constants.{name} is deprecated; use {replacement}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     if name == "BASE_URL":
         value = (os.environ.get("LABELLERR_BASE_URL") or "").strip().rstrip("/")
         return value or DEFAULT_BASE_URL

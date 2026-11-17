@@ -17,6 +17,8 @@ from typing import Callable, List
 from labellerr.core import constants
 from labellerr.core.exceptions import LabellerrError
 
+logger = logging.getLogger(__name__)
+
 
 def validate_required(params: List[str]):
     """
@@ -44,37 +46,6 @@ def validate_required(params: List[str]):
                 if value is None or (isinstance(value, str) and not value.strip()):
                     raise LabellerrError(
                         f"Required parameter {param} cannot be null or empty"
-                    )
-
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def validate_data_type(param_name: str = "data_type"):
-    """
-    Decorator to validate data_type parameter against allowed types.
-
-    :param param_name: Name of the parameter to validate (default: 'data_type')
-    """
-
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            # Get function signature to map args to parameter names
-            import inspect
-
-            sig = inspect.signature(func)
-            bound_args = sig.bind(self, *args, **kwargs)
-            bound_args.apply_defaults()
-
-            if param_name in bound_args.arguments:
-                data_type = bound_args.arguments[param_name]
-                if data_type not in constants.DATA_TYPES:
-                    raise LabellerrError(
-                        f"Invalid data_type. Must be one of {constants.DATA_TYPES}"
                     )
 
             return func(self, *args, **kwargs)
@@ -209,16 +180,16 @@ def log_method_call(include_params: bool = True):
                     and "secret" not in k.lower()
                     and "key" not in k.lower()
                 }
-                logging.debug(f"Calling {method_name} with params: {filtered_params}")
+                logger.debug("Calling %s with params: %s", method_name, filtered_params)
             else:
-                logging.debug(f"Calling {method_name}")
+                logger.debug("Calling %s", method_name)
 
             try:
                 result = func(self, *args, **kwargs)
-                logging.debug(f"{method_name} completed successfully")
+                logger.debug("%s completed successfully", method_name)
                 return result
             except Exception as e:
-                logging.error(f"{method_name} failed: {str(e)}")
+                logger.error("%s failed: %s", method_name, e)
                 raise
 
         return wrapper
@@ -799,7 +770,7 @@ def handle_api_errors(func: Callable) -> Callable:
             raise
         except Exception as e:
             method_name = func.__name__
-            logging.error(f"Unexpected error in {method_name}: {e}")
+            logger.error("Unexpected error in %s: %s", method_name, e)
             raise
 
     return wrapper
@@ -877,18 +848,18 @@ def auto_log_and_handle_errors_async(
                         and "secret" not in k.lower()
                         and "key" not in k.lower()
                     }
-                    logging.debug(
-                        f"Calling {method_name} with params: {filtered_params}"
+                    logger.debug(
+                        "Calling %s with params: %s", method_name, filtered_params
                     )
                 else:
-                    logging.debug(f"Calling {method_name}")
+                    logger.debug("Calling %s", method_name)
 
                 try:
                     result = await func(self, *args, **kwargs)
-                    logging.debug(f"{method_name} completed successfully")
+                    logger.debug("%s completed successfully", method_name)
                     return result
                 except Exception as e:
-                    logging.error(f"{method_name} failed: {str(e)}")
+                    logger.error("%s failed: %s", method_name, e)
                     raise
 
             return wrapper
@@ -906,7 +877,7 @@ def auto_log_and_handle_errors_async(
                 raise
             except Exception as e:
                 method_name = func.__name__
-                logging.error(f"Unexpected error in {method_name}: {e}")
+                logger.error("Unexpected error in %s: %s", method_name, e)
                 raise
 
         return wrapper

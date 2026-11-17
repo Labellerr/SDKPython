@@ -5,6 +5,7 @@ Connection settings shared by the sync and async Labellerr clients.
 import os
 from dataclasses import dataclass
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from . import constants
 
@@ -25,6 +26,33 @@ DEFAULT_SOURCE = "sdk"
 ENV_BASE_URL = "LABELLERR_BASE_URL"
 ENV_ORIGIN = "LABELLERR_ORIGIN"
 
+# Hosts a base URL may reach over plain http (credentials go out in headers).
+_LOCAL_HOSTS = frozenset(["localhost", "127.0.0.1", "::1"])
+
+
+def _validate_base_url(base_url: str) -> None:
+    """
+    Reject a base URL the client cannot use safely: it must be ``https://`` with a
+    host, or ``http://`` to the local machine.
+
+    :raises ValueError: If the URL has no scheme or host, or another scheme
+    """
+    parts = urlsplit(base_url)
+    scheme = parts.scheme.lower()
+    try:
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        host = ""
+    if scheme not in ("https", "http") or not host:
+        raise ValueError(
+            f"base_url must be an https:// URL with a host, got {base_url!r}"
+        )
+    if scheme == "http" and host not in _LOCAL_HOSTS:
+        raise ValueError(
+            "base_url must use https:// (http:// would send credentials in plain "
+            f"text); http is allowed only for localhost, got {base_url!r}"
+        )
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -35,7 +63,9 @@ class Settings:
     client uses when no settings are passed) also reads ``LABELLERR_BASE_URL`` and
     ``LABELLERR_ORIGIN``.
 
-    :param base_url: API base URL (a trailing ``/`` is removed)
+    :param base_url: API base URL (a trailing ``/`` is removed); ``https://`` with a
+        host, or ``http://`` only for localhost
+    :raises ValueError: If ``base_url`` is not such a URL
     :param origin: ``origin`` header; None picks the default for the credential kind
         (``https://pro.labellerr.com`` for an API key, ``https://sdk.labellerr.com``
         for an access token)
@@ -51,7 +81,9 @@ class Settings:
     def __post_init__(self) -> None:
         if not isinstance(self.base_url, str) or not self.base_url.strip():
             raise ValueError("base_url must be a non-empty string")
-        object.__setattr__(self, "base_url", self.base_url.strip().rstrip("/"))
+        base_url = self.base_url.strip().rstrip("/")
+        _validate_base_url(base_url)
+        object.__setattr__(self, "base_url", base_url)
 
     @classmethod
     def from_env(cls, **overrides: Any) -> "Settings":
