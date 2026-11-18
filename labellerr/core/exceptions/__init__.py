@@ -60,6 +60,19 @@ class ServerError(LabellerrError):
     """The API failed to handle the request (HTTP 5xx)."""
 
 
+class APIConnectionError(LabellerrError):
+    """
+    The request never got a response: the connection failed or was dropped.
+
+    The original ``requests`` or ``aiohttp`` exception is the ``__cause__``.
+    ``request_id`` is set; the response details are ``None``.
+    """
+
+
+class APITimeoutError(APIConnectionError):
+    """The request timed out while connecting or waiting for the response."""
+
+
 class JobTimeoutError(LabellerrError):
     """A background job did not finish before the polling deadline passed."""
 
@@ -109,6 +122,8 @@ __all__ = [
     "NotFoundError",
     "RateLimitError",
     "ServerError",
+    "APIConnectionError",
+    "APITimeoutError",
     "JobTimeoutError",
     "JobFailedError",
     "InvalidDatasetError",

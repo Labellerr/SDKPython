@@ -4,13 +4,12 @@ import concurrent.futures
 import contextvars
 import json
 import logging
-import math
 import os
 import threading
 import time
 import uuid
 from abc import ABCMeta
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -20,10 +19,15 @@ from ..exceptions import (
     JobFailedError,
     JobTimeoutError,
     LabellerrError,
-    RateLimitError,
-    ServerError,
 )
-from .utils import poll
+from ..utils import (
+    DEFAULT_POLL_INTERVAL,
+    DEFAULT_POLL_TIMEOUT,
+    MIN_POLL_INTERVAL,
+    TRANSIENT_ERRORS,
+    _validate_polling,
+    poll,
+)
 from ..exports import Export
 
 from ..client import LabellerrClient
@@ -31,38 +35,11 @@ from ..client import LabellerrClient
 logger = logging.getLogger(__name__)
 
 # Pre-annotation job polling defaults (the interval matches what poll() used).
-PREANNOTATION_POLL_INTERVAL = 2.0
+PREANNOTATION_POLL_INTERVAL = DEFAULT_POLL_INTERVAL
 PREANNOTATION_TIMEOUT = 3600.0
-# Smallest polling interval accepted (interval=0 would flood the API).
-MIN_PREANNOTATION_POLL_INTERVAL = 0.5
+# Kept for compatibility; the floor lives in labellerr.core.utils.MIN_POLL_INTERVAL.
+MIN_PREANNOTATION_POLL_INTERVAL = MIN_POLL_INTERVAL
 CONF_BUCKETS = ("low", "medium", "high")
-
-
-def _validate_polling(timeout: Optional[float], interval: float) -> None:
-    """
-    Check pre-annotation polling arguments before any request is sent.
-
-    :raises LabellerrError: If ``interval`` is not a number of at least
-        ``MIN_PREANNOTATION_POLL_INTERVAL`` seconds, or ``timeout`` is neither None
-        nor a finite number >= 0
-    """
-
-    def is_number(value) -> bool:
-        return (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
-        )
-
-    if not is_number(interval) or interval < MIN_PREANNOTATION_POLL_INTERVAL:
-        raise LabellerrError(
-            f"interval must be a number of at least "
-            f"{MIN_PREANNOTATION_POLL_INTERVAL} seconds, got {interval!r}"
-        )
-    if timeout is not None and (not is_number(timeout) or timeout < 0):
-        raise LabellerrError(
-            f"timeout must be None or a number >= 0 seconds, got {timeout!r}"
-        )
 
 
 class LabellerrProjectMeta(ABCMeta):
@@ -153,17 +130,42 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
     def attached_datasets(self):
         return self.__project_data.get("attached_datasets")
 
-    def status(self) -> Dict:
+    def status(
+        self,
+        interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: Optional[float] = DEFAULT_POLL_TIMEOUT,
+        max_retries: Optional[int] = None,
+    ) -> Dict:
         """
         Poll project status until completion or timeout.
 
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the timeout.
+
+        Args:
+            interval: Seconds between status checks (default 2, at least
+                ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+            timeout: Maximum seconds to poll (default 3600); None polls until done
+            max_retries: Maximum number of status checks (default: no limit)
+
         Returns:
-            Final project data with status information
+            Final project data with status information. On timeout or
+            ``max_retries``, the last project data received.
+
+        Raises:
+            JobTimeoutError: If the timeout or ``max_retries`` is reached before any
+                status was received
+            LabellerrError: If a non-transient error occurs, or ``interval`` or
+                ``timeout`` is invalid
 
         Examples:
-            # Get current project status
+            # Poll until project processing is complete
             final_status = project.status()
+
+            # Poll with a custom timeout
+            final_status = project.status(timeout=300)
         """
+        _validate_polling(timeout, interval)
 
         def get_project_status():
             unique_id = str(uuid.uuid4())
@@ -205,9 +207,9 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         return poll(
             function=get_project_status,
             condition=is_completed,
-            interval=2.0,
-            timeout=None,
-            max_retries=None,
+            interval=interval,
+            timeout=timeout,
+            max_retries=max_retries,
             on_success=on_success,
         )
 
@@ -385,7 +387,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :param job_id: The job ID to wait for
         :param timeout: Maximum seconds to wait (default 3600); None waits forever
         :param interval: Seconds between status requests (default 2, at least
-            ``MIN_PREANNOTATION_POLL_INTERVAL``)
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
         :return: The API response of the completed job
         :raises JobTimeoutError: If the job is not completed before the timeout
         :raises JobFailedError: If the job fails
@@ -403,11 +405,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 if (response_data.get("response") or {}).get("status") == "completed":
                     logger.info("Pre-annotation job %s completed successfully", job_id)
                     return response_data
-            except (
-                ServerError,
-                RateLimitError,
-                requests.exceptions.RequestException,
-            ) as e:
+            except TRANSIENT_ERRORS as e:
                 last_error = e
                 logger.warning("Transient error checking pre-annotation job: %s", e)
             except JobFailedError as e:
@@ -443,7 +441,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :param job_id: The job ID to check status for
         :param timeout: Maximum seconds to wait (default 3600); None waits forever
         :param interval: Seconds between status requests (default 2, at least
-            ``MIN_PREANNOTATION_POLL_INTERVAL``)
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
         :return: concurrent.futures.Future whose result is the final job response.
             ``future.result()`` raises LabellerrError (JobTimeoutError on timeout,
             JobFailedError when the job fails).
@@ -518,7 +516,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             else:
                 raise LabellerrError("File not found")
 
-            payload = {}
+            payload: Dict[str, Any] = {}
             with open(annotation_file, "rb") as f:
                 files = [("file", (file_name, f, "application/octet-stream"))]
                 response = self.client.make_request(
@@ -560,7 +558,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             otherwise block until the job completes (or ``timeout`` passes)
         :param timeout: Maximum seconds to wait for the job (default 3600)
         :param interval: Seconds between status requests (default 2, at least
-            ``MIN_PREANNOTATION_POLL_INTERVAL``)
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
         :return: A Future (``_async=True``) or the final job response
         :raises LabellerrError: If an argument is invalid (checked before the
             upload), or the upload or the job fails
@@ -658,6 +656,12 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         # 4. Extract report_id from response
         report_id = response.get("response") if isinstance(response, dict) else response
+        if not report_id:
+            raise LabellerrError(
+                "Export was not created: the response has no report ID",
+                request_id=unique_id,
+                response_body=response,
+            )
         return Export(report_id=report_id, project=self)
 
     def create_export(self, export_config: schemas.CreateExportParams):
@@ -870,5 +874,6 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             url,
             data=payload,
             extra_headers={"Content-Type": "application/json"},
+            request_id=unique_id,
         )
         return response.get("response")

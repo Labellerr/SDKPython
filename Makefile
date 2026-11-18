@@ -85,6 +85,7 @@ TYPECHECK_MODULES = \
 	labellerr/core/datasets/utils.py \
 	labellerr/core/exceptions/__init__.py \
 	labellerr/core/projects/__init__.py \
+	labellerr/core/projects/base.py \
 	labellerr/core/projects/utils.py \
 	labellerr/core/settings.py
 

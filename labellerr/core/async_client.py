@@ -18,7 +18,11 @@ from labellerr.core.credentials import (
     TokenProvider,
     resolve_credentials,
 )
-from labellerr.core.exceptions import LabellerrError
+from labellerr.core.exceptions import (
+    APIConnectionError,
+    APITimeoutError,
+    LabellerrError,
+)
 from labellerr.core.schemas.base import DatasetDataType
 from labellerr.core.settings import DEFAULT_SOURCE, Settings
 from labellerr.validators import auto_log_and_handle_errors_async
@@ -210,6 +214,8 @@ class AsyncLabellerrClient:
         :param kwargs: Additional arguments to pass to aiohttp
         :return: JSON response data for successful requests
         :raises LabellerrError: For non-successful responses
+        :raises APITimeoutError: If the request times out
+        :raises APIConnectionError: If the connection fails or drops
         """
         # Generate request_id if not provided
         if request_id is None:
@@ -224,10 +230,22 @@ class AsyncLabellerrClient:
         assert (
             self._session is not None
         ), "Session must be initialized before making requests"
-        async with self._session.request(method, url, **kwargs) as response:
-            return await self._handle_response(
-                response, request_id, success_codes=success_codes
-            )
+        try:
+            async with self._session.request(method, url, **kwargs) as response:
+                return await self._handle_response(
+                    response, request_id, success_codes=success_codes
+                )
+        # Timeout first: aiohttp's ServerTimeoutError is also a ClientConnectionError.
+        except asyncio.TimeoutError as e:
+            raise APITimeoutError(
+                f"Request timed out: {method} {client_utils.url_without_query(url)}",
+                request_id=request_id,
+            ) from e
+        except (aiohttp.ClientConnectionError, aiohttp.ClientPayloadError) as e:
+            raise APIConnectionError(
+                f"Connection error: {method} {client_utils.url_without_query(url)}",
+                request_id=request_id,
+            ) from e
 
     async def _handle_response(
         self,
@@ -407,10 +425,13 @@ class AsyncLabellerrClient:
         Async version of get_dataset.
         """
         url = f"{self.base_url}/datasets/{dataset_id}"
-        params = {"client_id": workspace_id, "uuid": str(uuid.uuid4())}
+        unique_id = str(uuid.uuid4())
+        params = {"client_id": workspace_id, "uuid": unique_id}
         headers = self._build_headers(client_id=workspace_id)
 
-        return await self._request("GET", url, params=params, headers=headers)
+        return await self._request(
+            "GET", url, params=params, headers=headers, request_id=unique_id
+        )
 
     async def create_dataset(
         self,

@@ -10,6 +10,7 @@ from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDEr
 from ..client import LabellerrClient
 
 from ..files import LabellerrFile
+from ..utils import DEFAULT_POLL_INTERVAL, DEFAULT_POLL_TIMEOUT
 from ..connectors import LabellerrConnection
 
 logger = logging.getLogger(__name__)
@@ -117,20 +118,31 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
 
     def status(
         self,
-        interval: float = 2.0,
-        timeout: Optional[float] = None,
+        interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: Optional[float] = DEFAULT_POLL_TIMEOUT,
         max_retries: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Poll dataset status until completion or timeout.
 
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the timeout.
+
         Args:
-            interval: Time in seconds between status checks (default: 2.0)
-            timeout: Maximum time in seconds to poll before giving up (default: None - no timeout)
-            max_retries: Maximum number of retries before giving up (default: None - no retry limit)
+            interval: Seconds between status checks (default 2, at least
+                ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+            timeout: Maximum seconds to poll (default 3600); None polls until done
+            max_retries: Maximum number of status checks (default: no limit)
 
         Returns:
-            Final dataset data with status information
+            Final dataset data with status information. On timeout or
+            ``max_retries``, the last dataset data received.
+
+        Raises:
+            JobTimeoutError: If the timeout or ``max_retries`` is reached before any
+                status was received
+            LabellerrError: If a non-transient error occurs, or ``interval`` or
+                ``timeout`` is invalid
 
         Examples:
             # Poll until dataset processing is complete
@@ -142,7 +154,9 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             # Poll with custom interval and max retries
             final_status = dataset.status(interval=5.0, max_retries=20)
         """
-        from ..utils import poll
+        from ..utils import _validate_polling, poll
+
+        _validate_polling(timeout, interval)
 
         def get_dataset_status():
             unique_id = str(uuid.uuid4())

@@ -19,7 +19,7 @@ from .credentials import (
 )
 
 # Initialize DataSets handler for dataset-related operations
-from .exceptions import LabellerrError
+from .exceptions import APIConnectionError, APITimeoutError, LabellerrError
 from .settings import Settings
 
 # Status codes retried (for idempotent methods only) before the response is returned.
@@ -388,6 +388,8 @@ class LabellerrClient:
             ``json``, ``data``, ``files``, ``timeout`` (default 30 s), ``headers``)
         :return: Parsed response data if handle_response=True, otherwise Response object
         :raises LabellerrError: For non-successful responses when handle_response=True
+        :raises APITimeoutError: If the request times out
+        :raises APIConnectionError: If the connection fails or drops
         """
         if request_id is None:
             request_id = client_utils.generate_request_id()
@@ -402,10 +404,25 @@ class LabellerrClient:
         if "timeout" not in kwargs:
             kwargs["timeout"] = DEFAULT_TIMEOUT
 
-        if self._session is not None:
-            response = self._session.request(method, url, **kwargs)
-        else:
-            response = requests.request(method, url, **kwargs)
+        try:
+            if self._session is not None:
+                response = self._session.request(method, url, **kwargs)
+            else:
+                response = requests.request(method, url, **kwargs)
+        # Timeout first: ConnectTimeout is both a Timeout and a ConnectionError.
+        except requests.exceptions.Timeout as e:
+            raise APITimeoutError(
+                f"Request timed out: {method} {client_utils.url_without_query(url)}",
+                request_id=request_id,
+            ) from e
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+        ) as e:
+            raise APIConnectionError(
+                f"Connection error: {method} {client_utils.url_without_query(url)}",
+                request_id=request_id,
+            ) from e
 
         if handle_response:
             return client_utils.handle_response(response, request_id)

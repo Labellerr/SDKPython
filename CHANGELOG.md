@@ -20,6 +20,10 @@ Sign in as a Labellerr user with an access token, alongside the API key and secr
   `retry_after`), `ServerError` (5xx), `JobTimeoutError`, `JobFailedError` (with
   `job_id`). Each carries `status_code`, `error_code`, `request_id` and
   `response_body`.
+- `APIConnectionError` (the connection failed or dropped) and its subclass
+  `APITimeoutError`, both `LabellerrError`s. `make_request` and the async client raise
+  them instead of `requests` / `aiohttp` exceptions; the original exception is the
+  `__cause__`.
 - `project.start_preannotation_upload(...)` returns the job ID without waiting;
   `project.preannotation_job_status(job_id)` checks a job with one request;
   `project.wait_for_preannotation_job(job_id, timeout, interval)` polls.
@@ -46,6 +50,24 @@ Check these before upgrading.
   `timeout` `None` or >= 0, in `upload_preannotations`, `wait_for_preannotation_job`
   and `preannotation_job_status_async`; otherwise `LabellerrError` is raised before
   the upload.
+- **`status()` raises errors instead of hiding them.** `dataset.status()`,
+  `project.status()` and `Export.status()` retry only transient errors (5xx, 429,
+  connection problems). Any other error, such as a 401 from an expired token or a
+  404, is raised on the first request. Before, these were logged and polling went on
+  forever, or returned `None` when a timeout was set. When the timeout passes before
+  any status was received, `JobTimeoutError` is raised (chained from the last error)
+  instead of returning `None`. `labellerr.core.utils.poll()` behaves the same way.
+- **`status()` stops after 3600 s by default** and returns the last status received.
+  Pass `timeout=None` to poll until done. `project.status()` now also takes
+  `interval`, `timeout` and `max_retries`, and all three validate `interval` and
+  `timeout` like the pre-annotation methods. The 0.5 s floor is now
+  `labellerr.core.utils.MIN_POLL_INTERVAL`; `MIN_PREANNOTATION_POLL_INTERVAL` is an
+  alias kept for compatibility.
+- **Network errors are `APIConnectionError` / `APITimeoutError`.** Code that caught
+  `requests.exceptions.ConnectionError`, `requests.exceptions.Timeout` or
+  `aiohttp.ClientError` from SDK calls must catch these (or `LabellerrError`) instead.
+- **`create_export` raises when the response has no report ID**, instead of
+  returning an `Export` with `report_id=None`.
 - **A failed pre-annotation job raises `JobFailedError`** (a `LabellerrError`; the
   message still starts with `Failed to get preannotation job status:`). Other errors
   while polling are no longer re-wrapped in a plain `LabellerrError`.
@@ -93,3 +115,5 @@ Check these before upgrading.
   missing name were removed.
 - `get_direct_upload_url` now sends its `client_id`, `purpose` and `file_name` query
   parameters.
+- `project.import_users` and `AsyncLabellerrClient.get_dataset` sent a `uuid` query
+  parameter that differed from the `x-correlation-id` header; both now use one ID.

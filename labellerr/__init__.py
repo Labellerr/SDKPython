@@ -4,6 +4,8 @@ from .async_client import AsyncLabellerrClient
 from .client import LabellerrClient
 from .core.credentials import ApiKeyCredentials, BearerTokenCredentials, Credentials
 from .core.exceptions import (
+    APIConnectionError,
+    APITimeoutError,
     AuthenticationError,
     JobFailedError,
     JobTimeoutError,
@@ -28,6 +30,8 @@ __all__ = [
     "NotFoundError",
     "RateLimitError",
     "ServerError",
+    "APIConnectionError",
+    "APITimeoutError",
     "JobTimeoutError",
     "JobFailedError",
     "Credentials",

@@ -15,13 +15,13 @@ from labellerr.core.exceptions import (
     LabellerrError,
     ServerError,
 )
-from labellerr.core.projects import base as project_base
+from labellerr.core import utils as poll_utils
 from labellerr.core.projects.base import PREANNOTATION_TIMEOUT
 from labellerr.core.projects.image_project import ImageProject
 
 BASE = "https://custom.example.test"
 # Read before the autouse fixture lowers it.
-DEFAULT_FLOOR = project_base.MIN_PREANNOTATION_POLL_INTERVAL
+DEFAULT_FLOOR = poll_utils.MIN_POLL_INTERVAL
 
 
 def _status(value):
@@ -31,7 +31,7 @@ def _status(value):
 @pytest.fixture(autouse=True)
 def _fast_polling(monkeypatch):
     # The tests poll every 0.01 s; the SDK's floor is 0.5 s.
-    monkeypatch.setattr(project_base, "MIN_PREANNOTATION_POLL_INTERVAL", 0.0)
+    monkeypatch.setattr(poll_utils, "MIN_POLL_INTERVAL", 0.0)
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ class TestPollingValidation:
         "interval", [0, -1, 0.1, float("nan"), float("inf"), True, "2", None]
     )
     def test_bad_interval_is_rejected(self, project, client, monkeypatch, interval):
-        monkeypatch.setattr(project_base, "MIN_PREANNOTATION_POLL_INTERVAL", 0.5)
+        monkeypatch.setattr(poll_utils, "MIN_POLL_INTERVAL", 0.5)
 
         with pytest.raises(LabellerrError, match="interval"):
             project.wait_for_preannotation_job("job-1", interval=interval)
@@ -340,7 +340,7 @@ class TestUpload:
     def test_invalid_polling_is_rejected_before_the_upload(
         self, project, client, annotation_file, kwargs, monkeypatch
     ):
-        monkeypatch.setattr(project_base, "MIN_PREANNOTATION_POLL_INTERVAL", 0.5)
+        monkeypatch.setattr(poll_utils, "MIN_POLL_INTERVAL", 0.5)
         with pytest.raises(LabellerrError):
             project.upload_preannotations("coco_json", annotation_file, **kwargs)
         client.make_request.assert_not_called()

@@ -199,6 +199,11 @@ def generate_request_id() -> str:
     return str(uuid.uuid4())
 
 
+def url_without_query(url: Any) -> str:
+    """Return ``url`` without its query string, safe to put in an error message."""
+    return str(url).split("?", 1)[0]
+
+
 # Gateway error codes that decide the error class regardless of the HTTP status.
 _ERROR_CODE_CLASSES: Dict[str, Type[LabellerrError]] = {
     "INVALID_API_KEY": AuthenticationError,
