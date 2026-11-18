@@ -1,7 +1,6 @@
 import uuid
 from abc import ABCMeta
 
-from .. import constants
 from ..client import LabellerrClient
 from ..exceptions import LabellerrError
 
@@ -52,7 +51,7 @@ class LabellerrFileMeta(ABCMeta):
                 params["dataset_id"] = dataset_id
 
             # Priority: project_id > dataset_id
-            url = f"{constants.BASE_URL}/data/file_data"
+            url = f"{client.base_url}/data/file_data"
             response = client.make_request(
                 "GET", url, request_id=unique_id, params=params
             )
@@ -70,6 +69,8 @@ class LabellerrFileMeta(ABCMeta):
                 file_data=response,
             )
 
+        except LabellerrError:
+            raise
         except Exception as e:
             raise LabellerrError(f"Failed to create file instance: {str(e)}")
 

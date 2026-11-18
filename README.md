@@ -59,10 +59,122 @@ from labellerr.client import LabellerrClient
 from labellerr.exceptions import LabellerrError
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 ```
 
-Replace `'your_api_key'` and `'your_api_secret'` with your actual API credentials provided by Labellerr.
+Replace `'your_api_key'`, `'your_api_secret'` and `'your_client_id'` with the credentials and client ID provided by Labellerr. `client_id` is required: every request carries it, and a missing or blank one raises `LabellerrError` when the client is created.
+
+---
+
+### Sign in with an API key or a user token
+
+The client authenticates in one of two ways. Use the API key and secret shown above, or a user access token to act as a signed-in Labellerr user:
+
+```python
+from labellerr import LabellerrClient
+
+client = LabellerrClient.from_access_token(
+    "<user access token>",
+    client_id="<client id>",
+    email_id="user@example.com",
+)
+```
+
+Pass exactly one of `api_key` and `api_secret`, `access_token`, or `credentials=`. The `credentials=` argument takes an `ApiKeyCredentials(api_key, api_secret)` or a `BearerTokenCredentials(token)` object. Missing or empty credentials, or more than one kind, raise `AuthenticationError` when the client is created.
+
+`access_token` may also be a zero-argument function that returns the token. The client calls it for every request, so a long-running program can return a refreshed token. The function must be a normal function, not `async def`; an async function raises `AuthenticationError`.
+
+The function must be thread-safe. The SDK calls it from its own worker threads (`list_projects`, folder uploads, background pre-annotation polling). Those threads run in a copy of the caller's `contextvars` context, so a function that reads a `ContextVar` sees the caller's value.
+
+A token given as `"Bearer <token>"` is sent once as `Bearer <token>`, not `Bearer Bearer <token>`. Keys, secrets and tokens must be ASCII; anything else raises `AuthenticationError` when the client is created (or, for a function, when it returns the token).
+
+`client.api_key`, `client.api_secret` and `client.access_token` are read-only views of `client.credentials`. To log safely, scrub `client.credentials.secret_values()` from the text: it returns the key and secret, or the token, without calling a token function.
+
+#### Settings and the default origin
+
+Pass a `Settings` object as `settings=` to set `base_url`, `origin`, `source` (default `sdk`) or `user_agent`:
+
+```python
+from labellerr import LabellerrClient, Settings
+
+settings = Settings(base_url="https://api.labellerr.com", origin="https://sdk.labellerr.com")
+client = LabellerrClient.from_access_token("<user access token>", client_id="<client id>", settings=settings)
+```
+
+`base_url` must be an `https://` URL with a host; `http://` is accepted only for `localhost`, `127.0.0.1` and `::1`, so credentials are never sent in plain text. Anything else raises `ValueError` when the `Settings` is created.
+
+A `Settings` you build is used as given. With no `settings=`, the client reads these variables when it is created, not at import time:
+
+- `LABELLERR_BASE_URL`: the API base URL (default `https://api.labellerr.com`).
+- `LABELLERR_ORIGIN`: the `origin` header. An empty value is ignored. When set, it applies to both kinds of client.
+
+With no origin set, an API-key client sends `https://pro.labellerr.com`, the web app's origin. A token client sends `https://sdk.labellerr.com`. The gateway keeps one session per email and origin, so a token client that sent the web app's origin would sign the user out of the web app.
+
+#### Errors
+
+Failed API calls raise a subclass of `LabellerrError`, chosen by HTTP status:
+
+| Exception | Status | Raised for |
+| --- | --- | --- |
+| `AuthenticationError` | 401 | Credentials are missing or invalid, or rejected before the request is sent |
+| `PermissionDeniedError` | 403 | The caller may not perform this action |
+| `NotFoundError` | 404 | The resource does not exist |
+| `RateLimitError` | 429 | Too many requests |
+| `ServerError` | 5xx | The API failed to handle the request |
+
+Each error has `status_code`, `error_code` (the gateway's code, such as `TOKEN_INVALID`), `request_id` and `response_body` (the parsed JSON, or the text). They are `None` for errors raised in the client. `RateLimitError` also has `retry_after`, the seconds from the `Retry-After` header, or `None`.
+
+Every request carries an `x-correlation-id` header: the `request_id` you pass, or a generated one. The error's `request_id` is that same value, so it can be found in the gateway's logs.
+
+A failed pre-annotation job raises `JobFailedError` (with `job_id`); a job that does not finish in time raises `JobTimeoutError`.
+
+The SDK logs through named loggers under `labellerr` (for example `labellerr.core.projects.base`) and never configures logging itself. To see its messages, configure logging in your application, e.g. `logging.getLogger("labellerr").setLevel(logging.INFO)`.
+
+```python
+import time
+from labellerr import LabellerrError, RateLimitError
+
+url = f"{client.base_url}/<path>"
+try:
+    result = client.make_request("GET", url, params={"client_id": "<client id>"})
+except RateLimitError as e:
+    time.sleep(e.retry_after or 5)
+except LabellerrError as e:
+    print(e.status_code, e.error_code, e.request_id)
+```
+
+#### Retries
+
+The sync client retries on its own session, which it creates when connection pooling is on. It retries up to 3 times on 429, 500, 502, 503 and 504 responses, waiting 1 s, then 2 s, then 4 s (at most 10 s), plus up to 50% random jitter. A `Retry-After` of up to 10 s is waited for instead; with a longer one the client does not retry, and the `RateLimitError` carries `retry_after`. Only GET, HEAD, PUT, DELETE and OPTIONS are retried on those responses. POST is not, so a create call cannot run twice. Connection-establishment failures are retried for every method. When retries run out, the last response becomes the error above.
+
+The async client does not retry. A session passed with `session=` gets no retry policy.
+
+#### Sharing a connection pool
+
+Pass your own `requests.Session` as `session=` to share a pool with other code:
+
+```python
+import requests
+
+session = requests.Session()
+client = LabellerrClient("your_api_key", "your_api_secret", "your_client_id", session=session)
+
+client.close()   # leaves the session open
+session.close()  # you close it
+```
+
+The client uses the session as given. It mounts no retry adapters on it and never closes it.
+
+#### Async client
+
+`AsyncLabellerrClient` takes the same `api_key`, `api_secret`, `access_token`, `credentials=` and `settings=` arguments. It has no `client_id` or `email_id` argument; its methods take the client ID as a parameter. A token provider must also be a normal function.
+
+```python
+from labellerr import AsyncLabellerrClient
+
+async with AsyncLabellerrClient.from_access_token("<user access token>") as client:
+    ...
+```
 
 ---
 
@@ -109,7 +221,7 @@ from labellerr.exceptions import LabellerrError
 
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 
 project_payload = {
@@ -163,7 +275,7 @@ from labellerr.exceptions import LabellerrError
 
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 project_id = 'project_123'
 client_id = '12345'
@@ -192,7 +304,7 @@ from labellerr.exceptions import LabellerrError
 
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 
 project_id = 'project_123'
@@ -220,6 +332,27 @@ try:
 except LabellerrError as e:
     print(f"Failed to start upload: {e}")
 ```
+
+#### Starting an upload and following the job yourself
+
+`project.upload_preannotations(...)` uploads and waits (or, with `_async=True`, returns a `Future`). To upload and get the job ID back at once, then check the job when you choose, use `start_preannotation_upload` with `preannotation_job_status` (one request) or `wait_for_preannotation_job` (polls):
+
+```python
+from labellerr import JobFailedError
+from labellerr.core.projects import LabellerrProject
+
+project = LabellerrProject(client, "project_123")
+job_id = project.start_preannotation_upload("coco_json", "/path/to/annotations.json")
+
+status = project.preannotation_job_status(job_id)["response"]["status"]
+# ... later
+try:
+    project.wait_for_preannotation_job(job_id, timeout=600, interval=5)
+except JobFailedError as e:
+    print(f"Job {e.job_id} failed")
+```
+
+`interval` must be at least 0.5 seconds and `timeout` must be `None` (wait forever) or a number of seconds >= 0; other values raise `LabellerrError` before anything is uploaded.
 
 #### Choosing Between Sync and Async
 
@@ -268,7 +401,7 @@ from labellerr.exceptions import LabellerrError
 
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 
 project_id = 'project_123'
@@ -305,7 +438,7 @@ from labellerr.exceptions import LabellerrError
 
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 client_id = '12345'
 
@@ -348,7 +481,7 @@ from labellerr.client import LabellerrClient
 from labellerr.exceptions import LabellerrError
 
 # Initialize the client with your API credentials
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 client_id = '12345'
 data_type = 'image'
@@ -464,7 +597,7 @@ logging.basicConfig(
 
 from labellerr.client import LabellerrClient
 
-client = LabellerrClient('your_api_key', 'your_api_secret')
+client = LabellerrClient('your_api_key', 'your_api_secret', 'your_client_id')
 
 # Now all method calls will be automatically logged
 client.create_dataset(dataset_config, files_to_upload=['file1.jpg'])

@@ -1,21 +1,45 @@
 """This module will contain all CRUD for projects. Example, create, list projects, get project, delete project, update project, etc."""
 
 import concurrent.futures
+import contextvars
 import json
 import logging
 import os
+import threading
+import time
 import uuid
 from abc import ABCMeta
-from typing import Dict
+from typing import Any, Dict, Optional
 
 import requests
 
 from .. import client_utils, constants, schemas
-from ..exceptions import InvalidProjectError, LabellerrError
-from .utils import poll
+from ..exceptions import (
+    InvalidProjectError,
+    JobFailedError,
+    JobTimeoutError,
+    LabellerrError,
+)
+from ..utils import (
+    DEFAULT_POLL_INTERVAL,
+    DEFAULT_POLL_TIMEOUT,
+    MIN_POLL_INTERVAL,
+    TRANSIENT_ERRORS,
+    _validate_polling,
+    poll,
+)
 from ..exports import Export
 
 from ..client import LabellerrClient
+
+logger = logging.getLogger(__name__)
+
+# Pre-annotation job polling defaults (the interval matches what poll() used).
+PREANNOTATION_POLL_INTERVAL = DEFAULT_POLL_INTERVAL
+PREANNOTATION_TIMEOUT = 3600.0
+# Kept for compatibility; the floor lives in labellerr.core.utils.MIN_POLL_INTERVAL.
+MIN_PREANNOTATION_POLL_INTERVAL = MIN_POLL_INTERVAL
+CONF_BUCKETS = ("low", "medium", "high")
 
 
 class LabellerrProjectMeta(ABCMeta):
@@ -32,7 +56,7 @@ class LabellerrProjectMeta(ABCMeta):
         """Get project from Labellerr API"""
         unique_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/projects/project/{project_id}?client_id={client.client_id}"
+            f"{client.base_url}/projects/project/{project_id}?client_id={client.client_id}"
             f"&uuid={unique_id}"
         )
 
@@ -106,23 +130,47 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
     def attached_datasets(self):
         return self.__project_data.get("attached_datasets")
 
-    def status(self) -> Dict:
+    def status(
+        self,
+        interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: Optional[float] = DEFAULT_POLL_TIMEOUT,
+        max_retries: Optional[int] = None,
+    ) -> Dict:
         """
         Poll project status until completion or timeout.
 
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the timeout.
+
+        Args:
+            interval: Seconds between status checks (default 2, at least
+                ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+            timeout: Maximum seconds to poll (default 3600); None polls until done
+            max_retries: Maximum number of status checks (default: no limit)
+
         Returns:
-            Final project data with status information
+            Final project data with status information. On timeout or
+            ``max_retries``, the last project data received.
+
+        Raises:
+            JobTimeoutError: If the timeout or ``max_retries`` is reached before any
+                status was received
+            LabellerrError: If a non-transient error occurs, or ``interval`` or
+                ``timeout`` is invalid
 
         Examples:
-            # Get current project status
+            # Poll until project processing is complete
             final_status = project.status()
+
+            # Poll with a custom timeout
+            final_status = project.status(timeout=300)
         """
-        from .utils import poll
+        _validate_polling(timeout, interval)
 
         def get_project_status():
             unique_id = str(uuid.uuid4())
             url = (
-                f"{constants.BASE_URL}/projects/project/{self.project_id}?client_id={self.client.client_id}"
+                f"{self.client.base_url}/projects/project/{self.project_id}?client_id={self.client.client_id}"
                 f"&uuid={unique_id}"
             )
 
@@ -145,11 +193,11 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         def on_success(project_data):
             status_code = project_data.get("status_code", 500)
             if status_code == 300:
-                logging.info(
+                logger.info(
                     "Project %s processing completed successfully!", self.project_id
                 )
             else:
-                logging.warning(
+                logger.warning(
                     "Project %s processing finished with status code: %s",
                     self.project_id,
                     status_code,
@@ -159,9 +207,9 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         return poll(
             function=get_project_status,
             condition=is_completed,
-            interval=2.0,
-            timeout=None,
-            max_retries=None,
+            interval=interval,
+            timeout=timeout,
+            max_retries=max_retries,
             on_success=on_success,
         )
 
@@ -205,7 +253,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/actions/jobs/delete_datasets_from_project?project_id={self.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/actions/jobs/delete_datasets_from_project?project_id={self.project_id}&uuid={unique_id}"
 
         payload = json.dumps({"attached_datasets": validated_dataset_ids})
 
@@ -257,7 +305,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/actions/jobs/add_datasets_to_project?project_id={params.project_id}&uuid={unique_id}&client_id={params.client_id}"
+        url = f"{self.client.base_url}/actions/jobs/add_datasets_to_project?project_id={params.project_id}&uuid={unique_id}&client_id={params.client_id}"
 
         payload = json.dumps({"attached_datasets": validated_dataset_ids})
 
@@ -278,10 +326,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
         try:
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/projects/rotations/add?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+            url = f"{self.client.base_url}/projects/rotations/add?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
 
             payload = json.dumps(rotation_config)
-            logging.info(f"Update Rotation Count Payload: {payload}")
+            logger.info("Update Rotation Count Payload: %s", payload)
 
             self.client.make_request(
                 "POST",
@@ -291,104 +339,176 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 data=payload,
             )
 
-            logging.info("Rotation configuration updated successfully.")
+            logger.info("Rotation configuration updated successfully.")
 
             return {"msg": "project rotation configuration updated"}
         except LabellerrError as e:
-            logging.error(f"Project rotation update config failed: {e}")
+            logger.error("Project rotation update config failed: %s", e)
             raise
 
-    def preannotation_job_status_async(self, job_id):
+    def preannotation_job_status(self, job_id: str) -> Dict:
         """
-        Get the status of a preannotation job asynchronously with timeout protection.
+        Fetch the status of a pre-annotation job with a single request (no polling).
 
         :param job_id: The job ID to check status for
-        :return: concurrent.futures.Future object that will contain the final job status
-        :raises LabellerrError: If job status check fails
+        :return: The API response; the job status is at ``["response"]["status"]``
+        :raises JobFailedError: If the job reports ``failed``
+        :raises LabellerrError: If the request fails
         """
+        url = f"{self.client.base_url}/actions/upload_answers_status?project_id={self.project_id}&job_id={job_id}&client_id={self.client.client_id}"
+        response_data = self.client.make_request("GET", url)
 
-        def check_status():
-            url = f"{constants.BASE_URL}/actions/upload_answers_status?project_id={self.project_id}&job_id={job_id}&client_id={self.client.client_id}"
+        current_status = (response_data.get("response") or {}).get("status", "unknown")
+        logger.info("Pre-annotation job status: %s", current_status)
 
-            def get_job_status():
-                response_data = self.client.make_request(
-                    "GET",
-                    url,
-                    extra_headers={"Origin": constants.ALLOWED_ORIGINS},
-                )
-
-                # Log current status for visibility
-                current_status = response_data.get("response", {}).get(
-                    "status", "unknown"
-                )
-                logging.info(f"Pre-annotation job status: {current_status}")
-
-                # Check if job failed and raise error immediately
-                if current_status == "failed":
-                    raise LabellerrError("Internal server error: ", response_data)
-
-                return response_data
-
-            def is_job_completed(response_data):
-                return response_data.get("response", {}).get("status") == "completed"
-
-            def on_success(response_data):
-                logging.info("Pre-annotation job completed successfully!")
-
-            def on_exception(e):
-                logging.exception(f"Failed to get preannotation job status: {str(e)}")
-                raise LabellerrError(
-                    f"Failed to get preannotation job status: {str(e)}"
-                )
-
-            return poll(
-                function=get_job_status,
-                condition=is_job_completed,
-                on_success=on_success,
-                on_exception=on_exception,
+        if current_status == "failed":
+            # The prefix is the message the blocking upload has always raised.
+            raise JobFailedError(
+                "Failed to get preannotation job status: "
+                f"pre-annotation job {job_id} failed",
+                job_id=job_id,
+                response_body=response_data,
             )
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            return executor.submit(check_status)
+        return response_data
 
-    def __upload_preannotations(
+    def wait_for_preannotation_job(
         self,
-        annotation_format,
-        annotation_file,
-        conf_bucket=None,
-    ):
+        job_id: str,
+        timeout: Optional[float] = PREANNOTATION_TIMEOUT,
+        interval: float = PREANNOTATION_POLL_INTERVAL,
+    ) -> Dict:
         """
-        Uploads preannotation data to a project asynchronously.
+        Poll a pre-annotation job until it completes, fails or the timeout passes.
+
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the deadline.
+
+        :param job_id: The job ID to wait for
+        :param timeout: Maximum seconds to wait (default 3600); None waits forever
+        :param interval: Seconds between status requests (default 2, at least
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+        :return: The API response of the completed job
+        :raises JobTimeoutError: If the job is not completed before the timeout
+        :raises JobFailedError: If the job fails
+        :raises LabellerrError: If a non-transient error occurs, or ``timeout`` or
+            ``interval`` is invalid
+        """
+        _validate_polling(timeout, interval)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        last_error = None
+
+        while True:
+            try:
+                response_data = self.preannotation_job_status(job_id)
+                last_error = None
+                if (response_data.get("response") or {}).get("status") == "completed":
+                    logger.info("Pre-annotation job %s completed successfully", job_id)
+                    return response_data
+            except TRANSIENT_ERRORS as e:
+                last_error = e
+                logger.warning("Transient error checking pre-annotation job: %s", e)
+            except JobFailedError as e:
+                logger.error("%s", e)
+                raise
+            # Any other error (authentication, permission, not found, ...) is raised
+            # as it is.
+
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                message = (
+                    f"Pre-annotation job {job_id} did not complete within "
+                    f"{timeout} seconds"
+                )
+                if last_error is not None:
+                    raise JobTimeoutError(message) from last_error
+                raise JobTimeoutError(message)
+            time.sleep(interval if remaining is None else min(interval, remaining))
+
+    def preannotation_job_status_async(
+        self,
+        job_id: str,
+        timeout: Optional[float] = PREANNOTATION_TIMEOUT,
+        interval: float = PREANNOTATION_POLL_INTERVAL,
+    ) -> concurrent.futures.Future:
+        """
+        Wait for a pre-annotation job in the background and return at once.
+
+        A daemon thread runs :meth:`wait_for_preannotation_job` and ends when the
+        job completes, fails or times out; it never outlives the deadline. The
+        thread runs in a copy of the caller's ``contextvars`` context.
+
+        :param job_id: The job ID to check status for
+        :param timeout: Maximum seconds to wait (default 3600); None waits forever
+        :param interval: Seconds between status requests (default 2, at least
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+        :return: concurrent.futures.Future whose result is the final job response.
+            ``future.result()`` raises LabellerrError (JobTimeoutError on timeout,
+            JobFailedError when the job fails).
+        :raises LabellerrError: At once, if ``timeout`` or ``interval`` is invalid
+        """
+        _validate_polling(timeout, interval)
+        future: "concurrent.futures.Future[Dict]" = concurrent.futures.Future()
+
+        def run():
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                future.set_result(
+                    self.wait_for_preannotation_job(job_id, timeout, interval)
+                )
+            except BaseException as e:
+                if not isinstance(e, LabellerrError):
+                    wrapped = LabellerrError(
+                        f"Failed to get preannotation job status: {e}"
+                    )
+                    wrapped.__cause__ = e
+                    e = wrapped
+                logger.error("Failed to get preannotation job status: %s", e)
+                future.set_exception(e)
+
+        context = contextvars.copy_context()
+        threading.Thread(
+            target=context.run,
+            args=(run,),
+            name=f"preannotation-job-{job_id}",
+            daemon=True,
+        ).start()
+        return future
+
+    def start_preannotation_upload(
+        self,
+        annotation_format: str,
+        annotation_file: str,
+        conf_bucket: Optional[str] = None,
+    ) -> str:
+        """
+        Upload a pre-annotation file and return the processing job's ID, without
+        waiting for the job.
+
+        Follow the job with :meth:`preannotation_job_status` (one request) or
+        :meth:`wait_for_preannotation_job` (polls).
 
         :param annotation_format: The format of the preannotation data.
         :param annotation_file: The file path of the preannotation data.
-        :param conf_bucket: Confidence bucket [low, medium, high]
-        :return: concurrent.futures.Future - call .result() to wait for completion
-        :raises LabellerrError: If the upload fails.
+        :param conf_bucket: Confidence bucket: ``low``, ``medium`` or ``high``
+        :return: The pre-annotation job ID
+        :raises LabellerrError: If an argument is invalid or the upload fails.
         """
         try:
-            # validate all the parameters
-            required_params = [
-                "annotation_format",
-                "annotation_file",
-            ]
-            for param in required_params:
-                if param not in locals():
-                    raise LabellerrError(f"Required parameter {param} is missing")
-
             if annotation_format not in constants.ANNOTATION_FORMAT:
                 raise LabellerrError(
                     f"Invalid annotation_format. Must be one of {constants.ANNOTATION_FORMAT}"
                 )
 
             request_uuid = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/actions/upload_answers?project_id={self.project_id}&answer_format={annotation_format}&client_id={self.client.client_id}&uuid={request_uuid}"
+            url = f"{self.client.base_url}/actions/upload_answers?project_id={self.project_id}&answer_format={annotation_format}&client_id={self.client.client_id}&uuid={request_uuid}"
             if conf_bucket:
-                assert conf_bucket in [
-                    "low",
-                    "medium",
-                    "high",
-                ], "Invalid confidence bucket value. Must be one of [low, medium, high]"
+                if conf_bucket not in CONF_BUCKETS:
+                    raise LabellerrError(
+                        "Invalid confidence bucket value. Must be one of "
+                        "[low, medium, high]"
+                    )
                 url += f"&conf_bucket={conf_bucket}"
             # validate if the file exist then extract file name from the path
             if os.path.exists(annotation_file):
@@ -396,13 +516,12 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             else:
                 raise LabellerrError("File not found")
 
-            payload = {}
+            payload: Dict[str, Any] = {}
             with open(annotation_file, "rb") as f:
                 files = [("file", (file_name, f, "application/octet-stream"))]
                 response = self.client.make_request(
                     "POST",
                     url,
-                    extra_headers={"email_id": self.client.api_key},
                     request_id=request_uuid,
                     handle_response=False,
                     data=payload,
@@ -413,51 +532,80 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             # read job_id from the response
             job_id = response_data["response"]["job_id"]
 
-            logging.info(f"Preannotation job started successfully. Job ID: {job_id}")
+            logger.info("Preannotation job started successfully. Job ID: %s", job_id)
 
-            return self.preannotation_job_status_async(job_id)
+            return job_id
         except Exception as e:
-            logging.error(f"Failed to upload preannotation: {str(e)}")
+            logger.error("Failed to upload preannotation: %s", e)
             raise
 
     def upload_preannotations(
-        self, annotation_format, annotation_file, conf_bucket=None, _async=False
+        self,
+        annotation_format: str,
+        annotation_file: str,
+        conf_bucket: Optional[str] = None,
+        _async: bool = False,
+        timeout: Optional[float] = PREANNOTATION_TIMEOUT,
+        interval: float = PREANNOTATION_POLL_INTERVAL,
     ):
         """
-        Backward compatibility method for upload_preannotations.
+        Upload preannotations and wait for the processing job.
 
         :param annotation_format: The format of the preannotation data.
         :param annotation_file: The file path of the preannotation data.
         :param conf_bucket: Confidence bucket [low, medium, high]
-        :param _async: Whether to return a future object (True) or block until completion (False)
-        :return: The response from the API (blocks until completion).
-        :raises LabellerrError: If the upload fails.
+        :param _async: If True, return a Future right after the upload request;
+            otherwise block until the job completes (or ``timeout`` passes)
+        :param timeout: Maximum seconds to wait for the job (default 3600)
+        :param interval: Seconds between status requests (default 2, at least
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+        :return: A Future (``_async=True``) or the final job response
+        :raises LabellerrError: If an argument is invalid (checked before the
+            upload), or the upload or the job fails
+        :raises JobTimeoutError: If the job does not finish before ``timeout``
         """
-        future = self.__upload_preannotations(
+        _validate_polling(timeout, interval)
+        job_id = self.start_preannotation_upload(
             annotation_format, annotation_file, conf_bucket
         )
         if _async:
-            return future
-        else:
-            return future.result()
+            return self.preannotation_job_status_async(job_id, timeout, interval)
+        return self.wait_for_preannotation_job(job_id, timeout, interval)
 
-    def _build_export_search_queries(self, export_config: schemas.CreateExportParams) -> list:
+    def _build_export_search_queries(
+        self, export_config: schemas.CreateExportParams
+    ) -> list:
         import time
+
         search_queries = []
         valid_statuses = [s for s in (export_config.statuses or []) if s]
         if valid_statuses:
-            search_queries.append({
-                "op": "OR",
-                "id": "file_status",
-                "values": [{"p": "in", "v": valid_statuses}],
-            })
+            search_queries.append(
+                {
+                    "op": "OR",
+                    "id": "file_status",
+                    "values": [{"p": "in", "v": valid_statuses}],
+                }
+            )
         if export_config.updated_after_timestamp:
             now_ms = int(time.time() * 1000)
-            search_queries.append({
-                "op": "OR",
-                "id": "last_updated_date",
-                "values": [{"p": "between", "v": [{"start": export_config.updated_after_timestamp, "end": now_ms}]}],
-            })
+            search_queries.append(
+                {
+                    "op": "OR",
+                    "id": "last_updated_date",
+                    "values": [
+                        {
+                            "p": "between",
+                            "v": [
+                                {
+                                    "start": export_config.updated_after_timestamp,
+                                    "end": now_ms,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
         return search_queries
 
     def _fetch_slice_id(self, search_queries: list) -> str:
@@ -495,11 +643,8 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             payload["delivery_format"] = export_config.delivery_format.value
 
         # 3. Call the UI exports endpoint
-        url = f"{constants.BASE_URL}/exports/files?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
-        headers = {
-            "Origin": constants.ALLOWED_ORIGINS,
-            "Content-Type": "application/json",
-        }
+        url = f"{self.client.base_url}/exports/files?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+        headers = {"Content-Type": "application/json"}
 
         response = self.client.make_request(
             "POST",
@@ -511,6 +656,12 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
         # 4. Extract report_id from response
         report_id = response.get("response") if isinstance(response, dict) else response
+        if not report_id:
+            raise LabellerrError(
+                "Export was not created: the response has no report ID",
+                request_id=unique_id,
+                response_body=response,
+            )
         return Export(report_id=report_id, project=self)
 
     def create_export(self, export_config: schemas.CreateExportParams):
@@ -546,7 +697,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         :raises LabellerrError: If the request fails
         """
         request_uuid = client_utils.generate_request_id()
-        url = f"{constants.BASE_URL}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
+        url = f"{self.client.base_url}/exports/list?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
 
         response = self.client.make_request(
             "GET",
@@ -576,7 +727,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 raise LabellerrError("report_ids cannot be empty")
 
             # Construct URL
-            url = f"{constants.BASE_URL}/exports/status?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
+            url = f"{self.client.base_url}/exports/status?project_id={self.project_id}&uuid={request_uuid}&client_id={self.client.client_id}"
 
             payload = json.dumps({"report_ids": report_ids})
 
@@ -606,10 +757,10 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             return result
 
         except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to check export status: {str(e)}")
+            logger.error("Failed to check export status: %s", e)
             raise
         except Exception as e:
-            logging.error(f"Unexpected error checking export status: {str(e)}")
+            logger.error("Unexpected error checking export status: %s", e)
             raise
 
     def list_files(self, search_queries, size=10, next_search_after=None):
@@ -632,7 +783,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/search/project_files?project_id={params.project_id}&client_id={params.client_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/search/project_files?project_id={params.project_id}&client_id={params.client_id}&uuid={unique_id}"
 
         payload = json.dumps(
             {
@@ -670,7 +821,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/actions/files/bulk_assign?project_id={params.project_id}&uuid={unique_id}&client_id={params.client_id}"
+        url = f"{self.client.base_url}/actions/files/bulk_assign?project_id={params.project_id}&uuid={unique_id}&client_id={params.client_id}"
 
         payload = {
             "file_ids": params.file_ids,
@@ -689,7 +840,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
 
     def __fetch_exports_download_url(self, project_id, uuid, export_id, client_id):
         try:
-            url = f"{constants.BASE_URL}/exports/download?project_id={project_id}&uuid={uuid}&report_id={export_id}&client_id={client_id}"
+            url = f"{self.client.base_url}/exports/download?project_id={project_id}&uuid={uuid}&report_id={export_id}&client_id={client_id}"
             response = self.client.make_request(
                 "GET",
                 url,
@@ -697,6 +848,8 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
                 request_id=uuid,
             )
             return response.get("response")
+        except LabellerrError:
+            raise
         except Exception as e:
             raise LabellerrError(f"Failed to download export: {str(e)}")
 
@@ -710,7 +863,7 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
         """
         # Validate parameters using Pydantic
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/projects/import_users?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/projects/import_users?project_id={self.project_id}&client_id={self.client.client_id}&uuid={unique_id}"
 
         payload = json.dumps(
             {"selected_project_id": from_project.project_id, "import_all_users": True}
@@ -721,5 +874,6 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             url,
             data=payload,
             extra_headers={"Content-Type": "application/json"},
+            request_id=unique_id,
         )
         return response.get("response")

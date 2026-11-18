@@ -1,11 +1,12 @@
 import uuid
 import logging
 import os
-from .. import client_utils, constants
 from ..client import LabellerrClient
 from .connections import LabellerrConnection, LabellerrConnectionMeta
 from ..schemas import GCSConnectionTestParams, GCSConnectionParams
 from ..exceptions import LabellerrError
+
+logger = logging.getLogger(__name__)
 
 
 class GCSConnection(LabellerrConnection):
@@ -16,7 +17,7 @@ class GCSConnection(LabellerrConnection):
     ) -> dict:
         request_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/connectors/connections/test"
+            f"{client.base_url}/connectors/connections/test"
             f"?client_id={client.client_id}&uuid={request_id}"
         )
 
@@ -46,20 +47,14 @@ class GCSConnection(LabellerrConnection):
             "data_type": params.data_type.value,
         }
 
-        # Build headers without content-type for multipart form data
-        headers = client_utils.build_headers(
-            api_key=client.api_key,
-            api_secret=client.api_secret,
-            client_id=client.client_id,
-        )
-
-        response = client_utils.request(
+        # No content-type header: requests sets it (with the boundary) for multipart
+        response = client.make_request(
             "POST",
             url,
-            headers=headers,
             data=form_data,
             files=files,
             request_id=request_id,
+            timeout=(30, 300),
         )
         return response.get("response", {})
 
@@ -75,17 +70,10 @@ class GCSConnection(LabellerrConnection):
         :return: Connection ID for GCP connector
         """
         response = GCSConnection.test_connection(client, params)
-        logging.info(f"GCS connection test response: {response}")
+        logger.info("GCS connection test response: %s", response)
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"
-
-        # Build headers without content-type for multipart form data
-        headers = client_utils.build_headers(
-            api_key=client.api_key,
-            api_secret=client.api_secret,
-            client_id=client.client_id,
-        )
+        url = f"{client.base_url}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"
 
         # Prepare multipart form data
         with open(params.svc_account_json, "rb") as f:
@@ -110,13 +98,13 @@ class GCSConnection(LabellerrConnection):
             "client_id": client.client_id,
         }
 
-        response_data = client_utils.request(
+        response_data = client.make_request(
             "POST",
             url,
-            headers=headers,
             data=form_data,
             files=files,
             request_id=unique_id,
+            timeout=(30, 300),
         )
         return LabellerrConnection(
             client=client,

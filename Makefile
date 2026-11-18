@@ -72,6 +72,26 @@ test-with-coverage: ## Run tests with coverage report
 lint:
 	flake8 .
 
+# Modules that type-check cleanly; CI fails if they regress. Add a module here once
+# its mypy errors are fixed (the rest of the package still has older errors).
+TYPECHECK_MODULES = \
+	labellerr/__init__.py \
+	labellerr/core/async_client.py \
+	labellerr/core/client.py \
+	labellerr/core/client_utils.py \
+	labellerr/core/constants.py \
+	labellerr/core/credentials.py \
+	labellerr/core/datasets/__init__.py \
+	labellerr/core/datasets/utils.py \
+	labellerr/core/exceptions/__init__.py \
+	labellerr/core/projects/__init__.py \
+	labellerr/core/projects/base.py \
+	labellerr/core/projects/utils.py \
+	labellerr/core/settings.py
+
+typecheck: ## Run mypy on the modules that type-check cleanly
+	$(PYTHON) -m mypy --config-file pyproject.toml $(TYPECHECK_MODULES)
+
 format:
 	black .
 

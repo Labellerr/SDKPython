@@ -2,15 +2,15 @@ import json
 import uuid
 
 from .. import LabellerrClient
-from .. import constants, schemas
-from ..base.singleton import Singleton
+from .. import schemas
 from ..schemas import CreateUserParams, DeleteUserParams, UpdateUserRoleParams
 
 
-class LabellerrUsers(Singleton):
+class LabellerrUsers:
+    # A plain per-client object: a shared instance would run one client's calls with
+    # another client's credentials.
 
-    def __init__(self, client: "LabellerrClient", *args):
-        super().__init__(*args)
+    def __init__(self, client: "LabellerrClient"):
         self.client = client
 
     def create_user(self, params: CreateUserParams):
@@ -24,7 +24,7 @@ class LabellerrUsers(Singleton):
         # Validate parameters using Pydantic
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/register?client_id={params.client_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/register?client_id={params.client_id}&uuid={unique_id}"
 
         payload = json.dumps(
             {
@@ -62,7 +62,7 @@ class LabellerrUsers(Singleton):
         """
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/update?client_id={self.client.client_id}&project_id={params.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/update?client_id={self.client.client_id}&project_id={params.project_id}&uuid={unique_id}"
 
         # Build the payload with all provided information
         # Extract project_ids from roles for API requirement
@@ -113,7 +113,7 @@ class LabellerrUsers(Singleton):
         # Validate parameters using Pydantic
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/delete?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/delete?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
 
         # Build the payload with all provided information
         payload_data = {
@@ -172,7 +172,7 @@ class LabellerrUsers(Singleton):
             role_id=role_id,
         )
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/add_user_to_project?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/add_user_to_project?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
 
         payload_data = {"email_id": params.email_id, "uuid": unique_id}
 
@@ -203,7 +203,7 @@ class LabellerrUsers(Singleton):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/remove_user_from_project?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/remove_user_from_project?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
 
         payload_data = {"email_id": params.email_id, "uuid": unique_id}
 
@@ -236,7 +236,7 @@ class LabellerrUsers(Singleton):
         )
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/users/change_user_role?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
+        url = f"{self.client.base_url}/users/change_user_role?client_id={params.client_id}&project_id={params.project_id}&uuid={unique_id}"
 
         payload_data = {
             "email_id": params.email_id,

@@ -71,6 +71,8 @@ class VideoDataset(LabellerrDataset):
 
             return results
 
+        except LabellerrError:
+            raise
         except Exception as e:
             raise LabellerrError(f"Failed to process dataset videos: {str(e)}")
 

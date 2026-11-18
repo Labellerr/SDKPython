@@ -57,6 +57,7 @@ def client():
     mock_client.client_id = "test-client-id"
     mock_client.api_key = "test-api-key"
     mock_client.api_secret = "test-api-secret"
+    mock_client.base_url = "https://api.labellerr.com"
     return mock_client
 
 
@@ -366,7 +367,7 @@ class TestCreateProject:
 
                 # Verify headers
                 call_args = mock_request.call_args
-                headers = call_args[1]["headers"]
+                headers = call_args[1]["extra_headers"]
                 assert "Content-Type" in headers
                 assert headers["Content-Type"] == "application/json"
 
@@ -657,6 +658,7 @@ class TestDeleteProjectUnit:
         mock_client.client_id = "test-client-id"
         mock_client.api_key = "test-api-key"
         mock_client.api_secret = "test-api-secret"
+        mock_client.base_url = "https://api.labellerr.com"
         return mock_client
 
     @pytest.fixture

@@ -6,12 +6,14 @@ import uuid
 from abc import ABCMeta
 from typing import Dict, Any, Generator, Optional, TYPE_CHECKING
 
-from .. import constants
 from ..exceptions import InvalidDatasetError, LabellerrError, InvalidDatasetIDError
 from ..client import LabellerrClient
 
 from ..files import LabellerrFile
+from ..utils import DEFAULT_POLL_INTERVAL, DEFAULT_POLL_TIMEOUT
 from ..connectors import LabellerrConnection
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..projects import LabellerrProject
@@ -37,7 +39,7 @@ class LabellerrDatasetMeta(ABCMeta):
 
         unique_id = str(uuid.uuid4())
         url = (
-            f"{constants.BASE_URL}/datasets/{dataset_id}?client_id={client.client_id}"
+            f"{client.base_url}/datasets/{dataset_id}?client_id={client.client_id}"
             f"&uuid={unique_id}"
         )
 
@@ -116,20 +118,31 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
 
     def status(
         self,
-        interval: float = 2.0,
-        timeout: Optional[float] = None,
+        interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: Optional[float] = DEFAULT_POLL_TIMEOUT,
         max_retries: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Poll dataset status until completion or timeout.
 
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the timeout.
+
         Args:
-            interval: Time in seconds between status checks (default: 2.0)
-            timeout: Maximum time in seconds to poll before giving up (default: None - no timeout)
-            max_retries: Maximum number of retries before giving up (default: None - no retry limit)
+            interval: Seconds between status checks (default 2, at least
+                ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+            timeout: Maximum seconds to poll (default 3600); None polls until done
+            max_retries: Maximum number of status checks (default: no limit)
 
         Returns:
-            Final dataset data with status information
+            Final dataset data with status information. On timeout or
+            ``max_retries``, the last dataset data received.
+
+        Raises:
+            JobTimeoutError: If the timeout or ``max_retries`` is reached before any
+                status was received
+            LabellerrError: If a non-transient error occurs, or ``interval`` or
+                ``timeout`` is invalid
 
         Examples:
             # Poll until dataset processing is complete
@@ -141,12 +154,14 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
             # Poll with custom interval and max retries
             final_status = dataset.status(interval=5.0, max_retries=20)
         """
-        from ..utils import poll
+        from ..utils import _validate_polling, poll
+
+        _validate_polling(timeout, interval)
 
         def get_dataset_status():
             unique_id = str(uuid.uuid4())
             url = (
-                f"{constants.BASE_URL}/datasets/{self.dataset_id}?client_id={self.client.client_id}"
+                f"{self.client.base_url}/datasets/{self.dataset_id}?client_id={self.client.client_id}"
                 f"&uuid={unique_id}"
             )
 
@@ -169,11 +184,11 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         def on_success(dataset_data):
             status_code = dataset_data.get("status_code", 500)
             if status_code == 300:
-                logging.info(
+                logger.info(
                     "Dataset %s processing completed successfully!", self.dataset_id
                 )
             else:
-                logging.warning(
+                logger.warning(
                     "Dataset %s processing finished with status code: %s",
                     self.dataset_id,
                     status_code,
@@ -198,12 +213,12 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         :param page_size: Number of files to fetch per API request (default: 1000)
         :return: Generator yielding LabellerrFile instances
         """
-        logging.info(f"Fetching files for dataset: {self.dataset_id}")
+        logger.info("Fetching files for dataset: %s", self.dataset_id)
         next_search_after = None  # Start with None for first page
 
         while True:
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/search/files/all"
+            url = f"{self.client.base_url}/search/files/all"
             params = {
                 "sort_by": "created_at",
                 "sort_order": "desc",
@@ -229,8 +244,10 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
                     _file = LabellerrFile.from_file_data(self.client, file_data)
                     yield _file
                 except LabellerrError as e:
-                    logging.warning(
-                        f"Warning: Failed to create file instance for {file_data.get('file_id')}: {str(e)}"
+                    logger.warning(
+                        "Failed to create file instance for %s: %s",
+                        file_data.get("file_id"),
+                        e,
                     )
 
             # Get next_search_after for pagination
@@ -259,7 +276,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         """
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/connectors/datasets/sync?uuid={unique_id}&client_id={self.client.client_id}"
+        url = f"{self.client.base_url}/connectors/datasets/sync?uuid={unique_id}&client_id={self.client.client_id}"
 
         payload = json.dumps(
             {
@@ -268,7 +285,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
                 "dataset_id": self.dataset_id,
                 "path": path,
                 "data_type": data_type,
-                "email_id": self.client.api_key,
+                "email_id": self.client.caller_identity,
                 "connection_id": connection.connection_id,
             }
         )
@@ -292,7 +309,7 @@ class LabellerrDataset(metaclass=LabellerrDatasetMeta):
         assert is_multimodal is True, "Disabling multimodal indexing is not supported"
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/search/multimodal_index?client_id={self.client.client_id}"
+        url = f"{self.client.base_url}/search/multimodal_index?client_id={self.client.client_id}"
 
         payload = json.dumps(
             {

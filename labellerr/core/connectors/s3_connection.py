@@ -2,9 +2,10 @@ import json
 import uuid
 from ..client import LabellerrClient
 from ..schemas import AWSConnectionParams, AWSConnectionTestParams
-from .. import client_utils, constants
 from .connections import LabellerrConnection, LabellerrConnectionMeta
 import logging
+
+logger = logging.getLogger(__name__)
 
 
 class S3Connection(LabellerrConnection):
@@ -21,15 +22,8 @@ class S3Connection(LabellerrConnection):
         """
         request_id = str(uuid.uuid4())
         test_connection_url = (
-            f"{constants.BASE_URL}/connectors/connections/test"
+            f"{client.base_url}/connectors/connections/test"
             f"?client_id={client.client_id}&uuid={request_id}"
-        )
-
-        headers = client_utils.build_headers(
-            api_key=client.api_key,
-            api_secret=client.api_secret,
-            client_id=client.client_id,
-            extra_headers={"email_id": client.api_key},
         )
 
         aws_credentials_json = json.dumps(
@@ -48,17 +42,13 @@ class S3Connection(LabellerrConnection):
             "data_type": (None, params.data_type.value),
         }
 
-        # Remove content-type from headers to let requests set it with boundary
-        headers_without_content_type = {
-            k: v for k, v in headers.items() if k.lower() != "content-type"
-        }
-
-        response = client_utils.request(
+        # No content-type header: requests sets it (with the boundary) for multipart
+        response = client.make_request(
             "POST",
             test_connection_url,
-            headers=headers_without_content_type,
             files=test_request,
             request_id=request_id,
+            timeout=(30, 300),
         )
         return response.get("response", {})
 
@@ -77,17 +67,10 @@ class S3Connection(LabellerrConnection):
         # Tests the connection before creating it
         response = S3Connection.test_connection(client, params)
 
-        logging.info(f"Connection test response: {response}")
+        logger.info("Connection test response: %s", response)
 
         unique_id = str(uuid.uuid4())
-        url = f"{constants.BASE_URL}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"
-
-        headers = client_utils.build_headers(
-            api_key=client.api_key,
-            api_secret=client.api_secret,
-            client_id=client.client_id,
-            extra_headers={"email_id": client.api_key},
-        )
+        url = f"{client.base_url}/connectors/connections/create?client_id={client.client_id}&uuid={unique_id}"
 
         creds_payload = json.dumps(
             {
@@ -103,8 +86,12 @@ class S3Connection(LabellerrConnection):
             "description": (None, params.description),
             "client_id": (None, client.client_id),
         }
-        response_data = client_utils.request(
-            "POST", url, headers=headers, files=request_payload, request_id=unique_id
+        response_data = client.make_request(
+            "POST",
+            url,
+            files=request_payload,
+            request_id=unique_id,
+            timeout=(30, 300),
         )
         return LabellerrConnection(
             client=client,

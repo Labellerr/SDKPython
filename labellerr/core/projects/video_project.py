@@ -1,7 +1,6 @@
 import uuid
 from typing import List
 
-from .. import constants
 from ..exceptions import LabellerrError
 from ..schemas import DatasetDataType, KeyFrame
 from .base import LabellerrProject, LabellerrProjectMeta
@@ -33,7 +32,7 @@ class VideoProject(LabellerrProject):
 
         try:
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/actions/add_update_keyframes?client_id={self.client.client_id}&uuid={unique_id}"
+            url = f"{self.client.base_url}/actions/add_update_keyframes?client_id={self.client.client_id}&uuid={unique_id}"
 
             body = {
                 "project_id": self.project_id,
@@ -73,7 +72,7 @@ class VideoProject(LabellerrProject):
 
         try:
             unique_id = str(uuid.uuid4())
-            url = f"{constants.BASE_URL}/actions/delete_keyframes?project_id={self.project_id}&uuid={unique_id}&client_id={self.client.client_id}"
+            url = f"{self.client.base_url}/actions/delete_keyframes?project_id={self.project_id}&uuid={unique_id}&client_id={self.client.client_id}"
 
             return self.client.make_request(
                 "POST",

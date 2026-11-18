@@ -5,6 +5,10 @@ Export class for handling export operations with status tracking and polling.
 from typing import TYPE_CHECKING, Dict, Any, Optional
 import logging
 
+from ..utils import DEFAULT_POLL_INTERVAL, DEFAULT_POLL_TIMEOUT
+
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..projects.base import LabellerrProject
 
@@ -45,12 +49,30 @@ class Export:
 
     def status(
         self,
-        interval: float = 2.0,
-        timeout: Optional[float] = None,
+        interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: Optional[float] = DEFAULT_POLL_TIMEOUT,
         max_retries: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Poll export status until completion."""
-        from ..utils import poll
+        """
+        Poll export status until completion.
+
+        Authentication, permission and not-found errors are raised at once. Transient
+        failures (5xx, 429, connection problems) are retried until the timeout.
+
+        :param interval: Seconds between status checks (default 2, at least
+            ``labellerr.core.utils.MIN_POLL_INTERVAL``)
+        :param timeout: Maximum seconds to poll (default 3600); None polls until done
+        :param max_retries: Maximum number of status checks (default: no limit)
+        :return: The export status response. On timeout or ``max_retries``, the last
+            response received.
+        :raises JobTimeoutError: If the timeout or ``max_retries`` is reached before
+            any status was received
+        :raises LabellerrError: If a non-transient error occurs, or ``interval`` or
+            ``timeout`` is invalid
+        """
+        from ..utils import _validate_polling, poll
+
+        _validate_polling(timeout, interval)
 
         def get_status():
             response = self._project.check_export_status([self._report_id])
@@ -68,11 +90,11 @@ class Export:
             return False
 
         def on_success(response_data):
-            logging.info(f"Export {self._report_id} completed successfully!")
+            logger.info("Export %s completed successfully!", self._report_id)
             return response_data
 
         def on_failure(response_data):
-            logging.error(f"Export {self._report_id} failed: {response_data}")
+            logger.error("Export %s failed: %s", self._report_id, response_data)
             return response_data
 
         return poll(
