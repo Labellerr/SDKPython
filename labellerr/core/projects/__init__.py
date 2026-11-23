@@ -82,14 +82,20 @@ def create_project(
 
 def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
     """
-    Retrieves a list of projects associated with a client ID.
+    Retrieves a list of projects associated with a client ID, archived projects
+    included.
 
     :param client: The client instance.
     :param page_size: Optional limit on number of projects to return (default: None = all projects).
     :return: A list of LabellerrProject objects.
     """
     unique_id = str(uuid.uuid4())
-    url = f"{client.base_url}/project_drafts/projects/detailed_list?client_id={client.client_id}&uuid={unique_id}"
+    # include_archived=true: this list hides archived projects unless asked, and
+    # list_projects has always returned them.
+    url = (
+        f"{client.base_url}/projects/detailed_list?client_id={client.client_id}"
+        f"&include_archived=true&uuid={unique_id}"
+    )
 
     response = client.make_request(
         "GET",
@@ -99,7 +105,7 @@ def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
     )
 
     # Limit the number of projects if page_size is specified
-    projects_data = response["response"]
+    projects_data = response["response"]["projects"]
     if page_size is not None and page_size > 0:
         projects_data = projects_data[:page_size]
 

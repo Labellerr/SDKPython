@@ -7,6 +7,7 @@ using mocks and fixtures to avoid external API calls.
 
 import json
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from pydantic import ValidationError
@@ -422,7 +423,7 @@ class TestListProjects:
 
     def test_list_projects_empty_response(self, client):
         """Test list_projects with empty project list"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"projects": []}}
 
         with patch.object(client, "make_request", return_value=mock_response):
             result = list_projects(client)
@@ -433,7 +434,9 @@ class TestListProjects:
     def test_list_projects_single_project(self, client):
         """Test list_projects with a single project"""
         mock_response = {
-            "response": [{"project_id": "project-1", "data_type": "image"}]
+            "response": {
+                "projects": [{"project_id": "project-1", "data_type": "image"}]
+            }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
@@ -453,11 +456,13 @@ class TestListProjects:
     def test_list_projects_multiple_projects(self, client):
         """Test list_projects with multiple projects"""
         mock_response = {
-            "response": [
-                {"project_id": "project-1", "data_type": "image"},
-                {"project_id": "project-2", "data_type": "video"},
-                {"project_id": "project-3", "data_type": "text"},
-            ]
+            "response": {
+                "projects": [
+                    {"project_id": "project-1", "data_type": "image"},
+                    {"project_id": "project-2", "data_type": "video"},
+                    {"project_id": "project-3", "data_type": "text"},
+                ]
+            }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
@@ -488,7 +493,7 @@ class TestListProjects:
 
     def test_list_projects_url_construction(self, client):
         """Test that list_projects constructs URL correctly"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"projects": []}}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -498,13 +503,15 @@ class TestListProjects:
             # Verify URL
             call_args = mock_request.call_args
             url = call_args[0][1]
-            assert "/project_drafts/projects/detailed_list" in url
+            assert "/projects/detailed_list" in url
+            assert "project_drafts" not in url
+            assert "include_archived=true" in url
             assert f"client_id={client.client_id}" in url
             assert "uuid=" in url
 
     def test_list_projects_request_method(self, client):
         """Test that list_projects uses GET method"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"projects": []}}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -518,7 +525,7 @@ class TestListProjects:
 
     def test_list_projects_headers(self, client):
         """Test that list_projects sets correct headers"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"projects": []}}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -533,7 +540,7 @@ class TestListProjects:
 
     def test_list_projects_with_uuid(self, client):
         """Test that list_projects generates and uses UUID"""
-        mock_response = {"response": []}
+        mock_response = {"response": {"projects": []}}
 
         with patch.object(
             client, "make_request", return_value=mock_response
@@ -556,9 +563,11 @@ class TestListProjects:
         """Test that list_projects preserves order of projects"""
         project_ids = ["proj-001", "proj-002", "proj-003", "proj-004"]
         mock_response = {
-            "response": [
-                {"project_id": pid, "data_type": "image"} for pid in project_ids
-            ]
+            "response": {
+                "projects": [
+                    {"project_id": pid, "data_type": "image"} for pid in project_ids
+                ]
+            }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
@@ -572,6 +581,48 @@ class TestListProjects:
                 result = list_projects(client)
 
                 assert len(result) == len(project_ids)
+
+    def test_list_projects_sends_include_archived(self, client):
+        """list_projects asks for archived projects, which the list hides by default"""
+        with patch.object(
+            client, "make_request", return_value={"response": {"projects": []}}
+        ) as mock_request:
+            list_projects(client)
+
+        url = mock_request.call_args[0][1]
+        query = parse_qs(urlparse(url).query)
+        assert query["include_archived"] == ["true"]
+        assert query["client_id"] == [client.client_id]
+
+    def test_list_projects_parses_new_response_shape(self, client):
+        """Projects are read from response.projects, in order"""
+        mock_response = {
+            "response": {"projects": [{"project_id": "p1"}, {"project_id": "p2"}]}
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            with patch(
+                "labellerr.core.projects.LabellerrProject",
+                side_effect=lambda _client, project_id: project_id,
+            ):
+                assert list_projects(client) == ["p1", "p2"]
+
+    def test_list_projects_page_size_slices_projects(self, client):
+        """page_size limits how many projects from response.projects are opened"""
+        mock_response = {
+            "response": {
+                "projects": [{"project_id": f"p{i}"} for i in range(3)],
+            }
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            with patch(
+                "labellerr.core.projects.LabellerrProject",
+                side_effect=lambda _client, project_id: project_id,
+            ) as mock_project:
+                assert list_projects(client, page_size=2) == ["p0", "p1"]
+
+        assert mock_project.call_count == 2
 
 
 @pytest.mark.unit

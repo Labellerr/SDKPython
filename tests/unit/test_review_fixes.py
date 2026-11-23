@@ -47,7 +47,7 @@ def test_typed_error_survives_get_direct_upload_url():
 
 
 def _projects(n):
-    return {"response": [{"project_id": f"p{i}"} for i in range(n)]}
+    return {"response": {"projects": [{"project_id": f"p{i}"} for i in range(n)]}}
 
 
 def test_list_projects_skips_not_found_and_invalid_projects():
