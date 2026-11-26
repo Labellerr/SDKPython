@@ -78,7 +78,11 @@ class LabellerrProjectMeta(ABCMeta):
             if isinstance(instance, cls):
                 instance.__init__(client, project_id, **kwargs)
             return instance
-        project_data = cls.get_project(client, project_id)
+        # list_projects passes the list row, which is the same project object GET
+        # returns, so the request is only made when no data was passed.
+        project_data = kwargs.get("project_data")
+        if project_data is None:
+            project_data = cls.get_project(client, project_id)
         if project_data is None:
             raise InvalidProjectError(f"Project not found: {project_id}")
         data_type = project_data.get("data_type")

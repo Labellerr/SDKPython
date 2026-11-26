@@ -15,7 +15,16 @@ from pydantic import ValidationError
 from labellerr.core.annotation_templates import LabellerrAnnotationTemplate
 from labellerr.core.datasets import LabellerrDataset
 from labellerr.core.exceptions import LabellerrError
-from labellerr.core.projects import create_project, list_projects, delete_project
+from labellerr.core.projects import (
+    LabellerrAudioProject,
+    LabellerrDocumentProject,
+    LabellerrImageProject,
+    LabellerrTextProject,
+    LabellerrVideoProject,
+    create_project,
+    delete_project,
+    list_projects,
+)
 from labellerr.core.projects.base import LabellerrProject
 from labellerr.core.schemas import CreateProjectParams, DatasetDataType, RotationConfig
 import requests
@@ -435,61 +444,51 @@ class TestListProjects:
         """Test list_projects with a single project"""
         mock_response = {
             "response": {
-                "projects": [{"project_id": "project-1", "data_type": "image"}]
+                "projects": [
+                    {
+                        "project_id": "project-1",
+                        "data_type": "image",
+                        "status_code": 300,
+                    }
+                ]
             }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
-            with patch(
-                "labellerr.core.projects.base.LabellerrProject.get_project",
-                return_value={
-                    "project_id": "project-1",
-                    "data_type": "image",
-                    "status_code": 200,
-                },
-            ):
-                result = list_projects(client)
+            result = list_projects(client)
 
-                assert len(result) == 1
-                assert isinstance(result[0], LabellerrProject)
+            assert len(result) == 1
+            assert isinstance(result[0], LabellerrProject)
 
     def test_list_projects_multiple_projects(self, client):
         """Test list_projects with multiple projects"""
         mock_response = {
             "response": {
                 "projects": [
-                    {"project_id": "project-1", "data_type": "image"},
-                    {"project_id": "project-2", "data_type": "video"},
-                    {"project_id": "project-3", "data_type": "text"},
+                    {
+                        "project_id": "project-1",
+                        "data_type": "image",
+                        "status_code": 300,
+                    },
+                    {
+                        "project_id": "project-2",
+                        "data_type": "video",
+                        "status_code": 300,
+                    },
+                    {
+                        "project_id": "project-3",
+                        "data_type": "text",
+                        "status_code": 300,
+                    },
                 ]
             }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
-            with patch(
-                "labellerr.core.projects.base.LabellerrProject.get_project",
-                side_effect=[
-                    {
-                        "project_id": "project-1",
-                        "data_type": "image",
-                        "status_code": 200,
-                    },
-                    {
-                        "project_id": "project-2",
-                        "data_type": "video",
-                        "status_code": 200,
-                    },
-                    {
-                        "project_id": "project-3",
-                        "data_type": "text",
-                        "status_code": 200,
-                    },
-                ],
-            ):
-                result = list_projects(client)
+            result = list_projects(client)
 
-                assert len(result) == 3
-                assert all(isinstance(project, LabellerrProject) for project in result)
+            assert len(result) == 3
+            assert all(isinstance(project, LabellerrProject) for project in result)
 
     def test_list_projects_url_construction(self, client):
         """Test that list_projects constructs URL correctly"""
@@ -565,22 +564,16 @@ class TestListProjects:
         mock_response = {
             "response": {
                 "projects": [
-                    {"project_id": pid, "data_type": "image"} for pid in project_ids
+                    {"project_id": pid, "data_type": "image", "status_code": 300}
+                    for pid in project_ids
                 ]
             }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
-            with patch(
-                "labellerr.core.projects.base.LabellerrProject.get_project",
-                side_effect=[
-                    {"project_id": pid, "data_type": "image", "status_code": 200}
-                    for pid in project_ids
-                ],
-            ):
-                result = list_projects(client)
+            result = list_projects(client)
 
-                assert len(result) == len(project_ids)
+            assert [project.project_id for project in result] == project_ids
 
     def test_list_projects_sends_include_archived(self, client):
         """list_projects asks for archived projects, which the list hides by default"""
@@ -597,32 +590,137 @@ class TestListProjects:
     def test_list_projects_parses_new_response_shape(self, client):
         """Projects are read from response.projects, in order"""
         mock_response = {
-            "response": {"projects": [{"project_id": "p1"}, {"project_id": "p2"}]}
-        }
-
-        with patch.object(client, "make_request", return_value=mock_response):
-            with patch(
-                "labellerr.core.projects.LabellerrProject",
-                side_effect=lambda _client, project_id: project_id,
-            ):
-                assert list_projects(client) == ["p1", "p2"]
-
-    def test_list_projects_page_size_slices_projects(self, client):
-        """page_size limits how many projects from response.projects are opened"""
-        mock_response = {
             "response": {
-                "projects": [{"project_id": f"p{i}"} for i in range(3)],
+                "projects": [
+                    {"project_id": "p1", "status_code": 300},
+                    {"project_id": "p2", "status_code": 300},
+                ]
             }
         }
 
         with patch.object(client, "make_request", return_value=mock_response):
             with patch(
                 "labellerr.core.projects.LabellerrProject",
-                side_effect=lambda _client, project_id: project_id,
+                side_effect=lambda _client, project_id, **_kw: project_id,
+            ):
+                assert list_projects(client) == ["p1", "p2"]
+
+    def test_list_projects_page_size_slices_projects(self, client):
+        """page_size limits how many projects from response.projects are built"""
+        mock_response = {
+            "response": {
+                "projects": [
+                    {"project_id": f"p{i}", "status_code": 300} for i in range(3)
+                ],
+            }
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            with patch(
+                "labellerr.core.projects.LabellerrProject",
+                side_effect=lambda _client, project_id, **_kw: project_id,
             ) as mock_project:
                 assert list_projects(client, page_size=2) == ["p0", "p1"]
 
         assert mock_project.call_count == 2
+
+    def test_list_projects_builds_projects_from_rows(self, client):
+        """Each row becomes a project with no GET /projects/project/{id} call"""
+        row = {
+            "project_id": "project-1",
+            "project_name": "Cats",
+            "data_type": "image",
+            "status_code": 300,
+            "annotation_template_id": "template-1",
+            "created_by": "owner@example.com",
+            "created_at": 1700000000000,
+            "attached_datasets": ["dataset-1"],
+        }
+
+        with patch.object(
+            client, "make_request", return_value={"response": {"projects": [row]}}
+        ) as mock_request:
+            with patch(
+                "labellerr.core.projects.base.LabellerrProject.get_project"
+            ) as mock_get_project:
+                result = list_projects(client)
+
+        mock_get_project.assert_not_called()
+        assert mock_request.call_count == 1
+        assert len(result) == 1
+        project = result[0]
+        assert project.project_id == "project-1"
+        assert project.project_name == "Cats"
+        assert project.data_type == "image"
+        assert project.status_code == 300
+        assert project.annotation_template_id == "template-1"
+        assert project.created_by == "owner@example.com"
+        assert project.created_at == 1700000000000
+        assert project.attached_datasets == ["dataset-1"]
+
+    def test_list_projects_skips_rows_with_null_status_code(self, client):
+        """Rows with no project document (status_code null or missing) are skipped"""
+        mock_response = {
+            "response": {
+                "projects": [
+                    {"project_id": "p0", "data_type": "image", "status_code": 300},
+                    {"project_id": "p1", "data_type": "image", "status_code": None},
+                    {"project_id": "p2", "data_type": "image", "status_code": 500},
+                    {"project_id": "p3", "data_type": "image"},
+                ]
+            }
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            result = list_projects(client)
+
+        assert [project.project_id for project in result] == ["p0", "p2"]
+
+    @pytest.mark.parametrize(
+        "data_type, project_class",
+        [
+            ("image", LabellerrImageProject),
+            ("video", LabellerrVideoProject),
+            ("audio", LabellerrAudioProject),
+            ("text", LabellerrTextProject),
+            ("document", LabellerrDocumentProject),
+        ],
+    )
+    def test_list_projects_data_type_picks_subclass(
+        self, client, data_type, project_class
+    ):
+        """The row's data_type picks the project subclass"""
+        mock_response = {
+            "response": {
+                "projects": [
+                    {"project_id": "p1", "data_type": data_type, "status_code": 300}
+                ]
+            }
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            result = list_projects(client)
+
+        assert len(result) == 1
+        assert type(result[0]) is project_class
+
+    def test_list_projects_skips_unknown_data_type(self, client, caplog):
+        """A row with an unknown data_type is skipped and the skip is logged"""
+        mock_response = {
+            "response": {
+                "projects": [
+                    {"project_id": "p0", "data_type": "hologram", "status_code": 300},
+                    {"project_id": "p1", "data_type": "image", "status_code": 300},
+                ]
+            }
+        }
+
+        with patch.object(client, "make_request", return_value=mock_response):
+            with caplog.at_level("WARNING", logger="labellerr.core.projects"):
+                result = list_projects(client)
+
+        assert [project.project_id for project in result] == ["p1"]
+        assert "skipped 1 of 2 projects" in caplog.text
 
 
 @pytest.mark.unit
