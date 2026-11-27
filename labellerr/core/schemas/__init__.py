@@ -51,8 +51,11 @@ from labellerr.core.schemas.projects import (
     CreateLocalExportParams,
     CreateProjectParams,
     CreateTemplateParams,
+    ProjectProgress,
     Question,
     RotationConfig,
+    StageProgress,
+    WorkflowStages,
 )
 
 # User schemas
@@ -117,6 +120,9 @@ __all__ = [
     "DatasetConfig",
     # Project schemas
     "RotationConfig",
+    "ProjectProgress",
+    "StageProgress",
+    "WorkflowStages",
     "Question",
     "CreateProjectParams",
     "CreateTemplateParams",

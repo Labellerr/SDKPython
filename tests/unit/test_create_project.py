@@ -624,6 +624,16 @@ class TestListProjects:
 
         assert mock_project.call_count == 2
 
+    def test_list_projects_does_not_request_stats(self, client):
+        """Stats are only asked for by list_projects_with_progress (they're slower)"""
+        with patch.object(
+            client, "make_request", return_value={"response": {"projects": []}}
+        ) as mock_request:
+            list_projects(client)
+
+        query = parse_qs(urlparse(mock_request.call_args[0][1]).query)
+        assert "include_stats" not in query
+
     def test_list_projects_builds_projects_from_rows(self, client):
         """Each row becomes a project with no GET /projects/project/{id} call"""
         row = {
