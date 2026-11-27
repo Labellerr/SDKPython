@@ -1,6 +1,5 @@
 """Regression tests for review findings: typed errors, list_projects, users, headers."""
 
-import contextvars
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +8,7 @@ import requests
 from labellerr import AuthenticationError, LabellerrClient
 from labellerr.core import constants
 from labellerr.core.datasets.utils import connect_local_files
-from labellerr.core.exceptions import InvalidProjectError, NotFoundError, ServerError
+from labellerr.core.exceptions import InvalidProjectError, ServerError
 from labellerr.core.projects import list_projects
 from labellerr.core.projects.utils import get_direct_upload_url
 
@@ -46,21 +45,34 @@ def test_typed_error_survives_get_direct_upload_url():
         get_direct_upload_url(client, "f.json")
 
 
-def _projects(n):
-    return {"response": [{"project_id": f"p{i}"} for i in range(n)]}
+def _projects(n, null_status=()):
+    return {
+        "response": {
+            "projects": [
+                {
+                    "project_id": f"p{i}",
+                    "status_code": None if f"p{i}" in null_status else 300,
+                }
+                for i in range(n)
+            ]
+        }
+    }
 
 
-def test_list_projects_skips_not_found_and_invalid_projects():
+def _list_client(response):
     client = MagicMock()
     client.base_url = "https://x.test"
     client.client_id = "c"
-    client.make_request.return_value = _projects(4)
+    client.make_request.return_value = response
+    return client
 
-    def build(_client, project_id):
-        if project_id == "p0":
-            raise NotFoundError("gone")
+
+def test_list_projects_skips_rows_without_a_document_and_invalid_projects():
+    client = _list_client(_projects(4, null_status={"p0"}))
+
+    def build(_client, project_id, **_kw):
         if project_id == "p1":
-            raise InvalidProjectError("old")
+            raise InvalidProjectError("unknown data type")
         return project_id
 
     with patch("labellerr.core.projects.LabellerrProject", side_effect=build):
@@ -68,63 +80,28 @@ def test_list_projects_skips_not_found_and_invalid_projects():
 
 
 def test_list_projects_logs_how_many_were_skipped(caplog):
-    client = MagicMock()
-    client.base_url = "https://x.test"
-    client.client_id = "c"
-    client.make_request.return_value = _projects(3)
+    client = _list_client(_projects(3, null_status={"p0"}))
 
-    def build(_client, project_id):
-        if project_id == "p0":
-            raise NotFoundError("gone")
-        return project_id
-
-    with patch("labellerr.core.projects.LabellerrProject", side_effect=build):
+    with patch(
+        "labellerr.core.projects.LabellerrProject",
+        side_effect=lambda _client, project_id, **_kw: project_id,
+    ):
         with caplog.at_level("WARNING", logger="labellerr.core.projects"):
             list_projects(client)
 
     assert "skipped 1 of 3 projects" in caplog.text
 
 
-def test_list_projects_raises_a_server_error():
-    # A 500 for every project used to come back as an empty list.
-    client = MagicMock()
-    client.base_url = "https://x.test"
-    client.client_id = "c"
-    client.make_request.return_value = _projects(3)
-    with patch(
-        "labellerr.core.projects.LabellerrProject",
-        side_effect=ServerError("boom", status_code=500),
-    ):
-        with pytest.raises(ServerError):
-            list_projects(client)
-
-
-def test_list_projects_threads_see_the_callers_context_vars():
-    current_user = contextvars.ContextVar("current_user", default=None)
-    client = MagicMock()
-    client.base_url = "https://x.test"
-    client.client_id = "c"
-    client.make_request.return_value = _projects(3)
-    current_user.set("alice")
-
-    with patch(
-        "labellerr.core.projects.LabellerrProject",
-        side_effect=lambda _client, project_id: current_user.get(),
-    ):
-        assert list_projects(client) == ["alice"] * 3
-
-
-def test_list_projects_propagates_an_expired_token():
-    client = MagicMock()
-    client.base_url = "https://x.test"
-    client.client_id = "c"
-    client.make_request.return_value = _projects(2)
-    with patch(
-        "labellerr.core.projects.LabellerrProject",
-        side_effect=AuthenticationError("expired"),
-    ):
-        with pytest.raises(AuthenticationError):
-            list_projects(client)
+@pytest.mark.parametrize(
+    "error",
+    [ServerError("boom", status_code=500), AuthenticationError("expired")],
+)
+def test_list_projects_raises_errors_from_the_list_request(error):
+    # The list is the only request; its errors are raised, not turned into [].
+    client = _list_client(None)
+    client.make_request.side_effect = error
+    with pytest.raises(type(error)):
+        list_projects(client)
 
 
 def test_each_client_has_its_own_users_object():

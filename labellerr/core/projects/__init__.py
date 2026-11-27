@@ -1,4 +1,3 @@
-import contextvars
 import json
 import logging
 import uuid
@@ -10,7 +9,6 @@ from ..datasets import LabellerrDataset
 from ..exceptions import (
     InvalidProjectError,
     LabellerrError,
-    NotFoundError,
 )
 from .audio_project import AudioProject as LabellerrAudioProject
 from .document_project import DocucmentProject as LabellerrDocumentProject
@@ -19,8 +17,7 @@ from .video_project import VideoProject as LabellerrVideoProject
 from .text_project import TextProject as LabellerrTextProject
 from .base import LabellerrProject
 from ..annotation_templates import LabellerrAnnotationTemplate
-from typing import List, Optional
-from concurrent.futures import ThreadPoolExecutor
+from typing import List, NamedTuple, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +28,7 @@ __all__ = [
     "LabellerrImageProject",
     "LabellerrVideoProject",
     "LabellerrTextProject",
+    "ProjectWithProgress",
 ]
 
 
@@ -80,16 +78,33 @@ def create_project(
     return LabellerrProject(client, project_id=response["response"]["project_id"])
 
 
-def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
-    """
-    Retrieves a list of projects associated with a client ID.
+class ProjectWithProgress(NamedTuple):
+    """A project and its last counted progress, from ``list_projects_with_progress``."""
 
-    :param client: The client instance.
-    :param page_size: Optional limit on number of projects to return (default: None = all projects).
-    :return: A list of LabellerrProject objects.
+    project: LabellerrProject
+    progress: Optional[schemas.ProjectProgress]
+    """The stored count as of ``progress.computed_at``; None if not counted yet."""
+
+
+def _list_project_rows(
+    client: "LabellerrClient", page_size: Optional[int], include_stats: bool
+) -> List[Tuple[dict, LabellerrProject]]:
+    """
+    Fetch the project list in one request and build a project from each row.
+
+    Returns ``(row, project)`` pairs, in list order. Rows with no project document
+    (``status_code`` null) and rows with an unknown data type are skipped.
     """
     unique_id = str(uuid.uuid4())
-    url = f"{client.base_url}/project_drafts/projects/detailed_list?client_id={client.client_id}&uuid={unique_id}"
+    # include_archived=true: this list hides archived projects unless asked, and
+    # list_projects has always returned them.
+    url = (
+        f"{client.base_url}/projects/detailed_list?client_id={client.client_id}"
+        f"&include_archived=true"
+    )
+    if include_stats:
+        url += "&include_stats=true"
+    url += f"&uuid={unique_id}"
 
     response = client.make_request(
         "GET",
@@ -99,45 +114,87 @@ def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
     )
 
     # Limit the number of projects if page_size is specified
-    projects_data = response["response"]
+    projects_data = response["response"]["projects"]
     if page_size is not None and page_size > 0:
         projects_data = projects_data[:page_size]
 
-    def _instantiate_project(project_data):
+    # Each row is the same project object GET /projects/project/{id} returns, so the
+    # projects are built from the rows without another request.
+    pairs = []
+    for row in projects_data:
+        # No project document: the row comes from SQL only and status_code is null.
+        if row.get("status_code") is None:
+            continue
         try:
-            project = LabellerrProject(client, project_id=project_data["project_id"])
-            return project
-        except (NotFoundError, InvalidProjectError):
-            # Dangling or unknown-type project: skip it. Any other error (a 5xx, an
-            # expired token, no access, a rate limit) is raised.
-            return None
-
-    # Each task runs in its own copy of the caller's contextvars context, so a token
-    # function that reads a ContextVar still sees the caller's value.
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [
-            executor.submit(
-                contextvars.copy_context().run, _instantiate_project, project_data
+            project = LabellerrProject(
+                client, project_id=row["project_id"], project_data=row
             )
-            for project_data in projects_data
-        ]
-        try:
-            results = [future.result() for future in futures]
-        except BaseException:
-            for future in futures:
-                future.cancel()
-            raise
+        except InvalidProjectError:
+            # Unknown data type: skip it.
+            continue
+        pairs.append((row, project))
 
-    projects = [p for p in results if p is not None]
-    skipped = len(results) - len(projects)
+    skipped = len(projects_data) - len(pairs)
     if skipped:
         logger.warning(
-            "list_projects skipped %d of %d projects that could not be loaded "
-            "(not found or unknown data type)",
+            "list_projects skipped %d of %d projects "
+            "(no project document or unknown data type)",
             skipped,
-            len(results),
+            len(projects_data),
         )
-    return projects
+    return pairs
+
+
+def list_projects(client: "LabellerrClient", page_size: Optional[int] = None):
+    """
+    Retrieves a list of projects associated with a client ID, archived projects
+    included. The projects are built from the list in one request.
+
+    :param client: The client instance.
+    :param page_size: Optional limit on number of projects to return (default: None = all projects).
+    :return: A list of LabellerrProject objects.
+    """
+    return [
+        project
+        for _row, project in _list_project_rows(client, page_size, include_stats=False)
+    ]
+
+
+def list_projects_with_progress(
+    client: "LabellerrClient", page_size: Optional[int] = None
+) -> List[ProjectWithProgress]:
+    """
+    Retrieves every project with its last counted progress, in one request.
+
+    The same projects as ``list_projects``, each paired with its progress::
+
+        for project, progress in list_projects_with_progress(client):
+            print(
+                project.project_name,
+                progress.percent_complete if progress else "not counted yet",
+            )
+
+    ``progress`` is the stored count as of ``progress.computed_at``, not a live one.
+    It is refreshed when the project's dashboard is opened, when the project is
+    created or a dataset is attached or detached, and by the stats job at 08:00 and
+    14:00 IST for projects with activity. It is None when the project hasn't been
+    counted yet; call ``project.progress()`` for a live count.
+
+    This request is slower than ``list_projects``, so use ``list_projects`` when
+    progress isn't needed.
+
+    :param client: The client instance.
+    :param page_size: Optional limit on number of projects to return (default: None = all projects).
+    :return: A list of ProjectWithProgress(project, progress) tuples.
+    """
+    results = []
+    for row, project in _list_project_rows(client, page_size, include_stats=True):
+        workflow = (row.get("stats") or {}).get("workflow")
+        progress = (
+            schemas.ProjectProgress.model_validate(workflow) if workflow else None
+        )
+        results.append(ProjectWithProgress(project, progress))
+    return results
 
 
 def delete_project(client: "LabellerrClient", project: LabellerrProject):

@@ -78,7 +78,11 @@ class LabellerrProjectMeta(ABCMeta):
             if isinstance(instance, cls):
                 instance.__init__(client, project_id, **kwargs)
             return instance
-        project_data = cls.get_project(client, project_id)
+        # list_projects passes the list row, which is the same project object GET
+        # returns, so the request is only made when no data was passed.
+        project_data = kwargs.get("project_data")
+        if project_data is None:
+            project_data = cls.get_project(client, project_id)
         if project_data is None:
             raise InvalidProjectError(f"Project not found: {project_id}")
         data_type = project_data.get("data_type")
@@ -212,6 +216,39 @@ class LabellerrProject(metaclass=LabellerrProjectMeta):
             max_retries=max_retries,
             on_success=on_success,
         )
+
+    def progress(self) -> "schemas.ProjectProgress":
+        """
+        Count this project's files through the workflow, live.
+
+        Every file is counted now, all at one instant, so the numbers add up. This is
+        one request for one project; for every project at once, use
+        ``list_projects_with_progress``, which returns the last stored count of each.
+
+        Returns:
+            ProjectProgress: files per stage, accepted, set aside, finished and
+            ``percent_complete``.
+
+        Raises:
+            NotFoundError: If the project doesn't exist or the caller can't see it
+            ServerError: If counting failed (503)
+
+        Example:
+            progress = project.progress()
+            print(f"{progress.percent_complete}% complete")
+        """
+        unique_id = str(uuid.uuid4())
+        url = (
+            f"{self.client.base_url}/projects/workflow?project_id={self.project_id}"
+            f"&client_id={self.client.client_id}&uuid={unique_id}"
+        )
+        response = self.client.make_request(
+            "GET",
+            url,
+            extra_headers={"content-type": "application/json"},
+            request_id=unique_id,
+        )
+        return schemas.ProjectProgress.model_validate(response["response"])
 
     def detach_dataset_from_project(self, dataset_id=None, dataset_ids=None):
         """
